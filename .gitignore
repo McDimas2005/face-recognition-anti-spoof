@@ -14,6 +14,8 @@ apps/api/.mypy_cache/
 apps/api/data/
 apps/api/uploads/
 apps/api/.coverage
+apps/api/*.db
+apps/api/*.egg-info/
 apps/web/.next/
 apps/web/node_modules/
 legacy/__pycache__/
