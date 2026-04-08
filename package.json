@@ -1,0 +1,14 @@
+{
+  "name": "face-attendance-platform",
+  "private": true,
+  "workspaces": [
+    "apps/web",
+    "packages/shared"
+  ],
+  "scripts": {
+    "dev:web": "npm --workspace @face-attendance/web run dev",
+    "build:web": "npm --workspace @face-attendance/web run build",
+    "lint:web": "npm --workspace @face-attendance/web run lint"
+  }
+}
+
