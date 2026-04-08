@@ -175,7 +175,8 @@ def evaluate_frame(
 
     policy = _get_policy(db)
     retention = db.get(AppSetting, "retention_policy")
-    retention_policy = retention.value if retention else DEFAULT_RETENTION_POLICY
+    stored_retention = retention.value if retention else {}
+    retention_policy = {**DEFAULT_RETENTION_POLICY, **stored_retention}
     content, image = _read_upload(upload)
     detections = detector.detect(image)
 
