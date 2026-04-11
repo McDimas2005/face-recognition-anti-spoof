@@ -257,6 +257,14 @@ The backend exposes configurable settings for:
 - liveness threshold
 - consensus frame count
 - consensus window duration
+- minimum face size
+- minimum brightness
+- maximum brightness
+- minimum blur score
+- maximum yaw score
+- maximum occlusion score
+
+Super Admin users can adjust all recognition and quality thresholds from the settings page. Admin users remain limited to the non-superadmin settings sections.
 
 If the top candidate is too weak, the result becomes `unknown`. If the top and second-best candidates are too close, the result becomes `ambiguous`.
 

@@ -15,7 +15,6 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models.domain import (
-    AppSetting,
     AttendanceEvent,
     AttendanceSession,
     AttendanceSource,
@@ -28,10 +27,10 @@ from app.models.domain import (
     Person,
     SessionAllowedPerson,
 )
-from app.providers.demo import assess_quality, crop_face, detector, embedder, index, liveness, supported_embedders
+from app.providers.demo import assess_quality, crop_face, detector, index, liveness, supported_embedders
 from app.services.audit import write_audit_log
 from app.services.enrollment import compute_quality_score, serialize_face_box
-from app.services.settings import DEFAULT_RETENTION_POLICY
+from app.services.settings import DEFAULT_QUALITY_POLICY, get_quality_policy, get_recognition_policy, get_retention_policy
 
 
 @dataclass
@@ -46,10 +45,10 @@ class TemporalConsensusStore:
     def __init__(self) -> None:
         self._items: dict[str, list[CandidateFrame]] = defaultdict(list)
 
-    def add(self, session_id: str, client_key: str, frame: CandidateFrame) -> list[CandidateFrame]:
+    def add(self, session_id: str, client_key: str, frame: CandidateFrame, *, window_seconds: int = settings.consensus_window_seconds) -> list[CandidateFrame]:
         key = f"{session_id}:{client_key}"
         self._items[key].append(frame)
-        cutoff = frame.timestamp - timedelta(seconds=settings.consensus_window_seconds)
+        cutoff = frame.timestamp - timedelta(seconds=window_seconds)
         self._items[key] = [item for item in self._items[key] if item.timestamp >= cutoff]
         return self._items[key]
 
@@ -58,22 +57,6 @@ class TemporalConsensusStore:
 
 
 consensus_store = TemporalConsensusStore()
-LEGACY_DEMO_POLICY = {
-    "similarity_threshold": 0.82,
-    "commit_threshold": 0.86,
-    "ambiguity_margin": 0.04,
-    "liveness_threshold": 0.55,
-    "consensus_frames": 3,
-    "consensus_window_seconds": 5,
-}
-RECOMMENDED_DEMO_POLICY = {
-    "similarity_threshold": 0.58,
-    "commit_threshold": 0.62,
-    "ambiguity_margin": 0.02,
-    "liveness_threshold": 0.28,
-    "consensus_frames": 3,
-    "consensus_window_seconds": 5,
-}
 
 
 def _read_upload(upload: UploadFile) -> tuple[bytes, np.ndarray]:
@@ -82,23 +65,6 @@ def _read_upload(upload: UploadFile) -> tuple[bytes, np.ndarray]:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty frame upload")
     image = Image.open(io.BytesIO(content)).convert("RGB")
     return content, cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
-
-
-def _get_policy(db: Session) -> dict:
-    policy = db.get(AppSetting, "recognition_policy")
-    default_policy = {
-        "similarity_threshold": settings.similarity_threshold,
-        "commit_threshold": settings.commit_threshold,
-        "ambiguity_margin": settings.ambiguity_margin,
-        "liveness_threshold": settings.liveness_threshold,
-        "consensus_frames": settings.consensus_frames,
-        "consensus_window_seconds": settings.consensus_window_seconds,
-    }
-    if policy:
-        if policy.value == LEGACY_DEMO_POLICY:
-            return RECOMMENDED_DEMO_POLICY
-        return {**default_policy, **policy.value}
-    return default_policy
 
 
 def _allowed_person_ids(db: Session, session_id: str) -> list[str]:
@@ -141,21 +107,22 @@ def _recognition_thresholds(policy: dict) -> dict:
     }
 
 
-def _quality_thresholds() -> dict:
+def _quality_thresholds(policy: dict) -> dict:
+    merged_policy = {**DEFAULT_QUALITY_POLICY, **policy}
     return {
-        "min_face_size": int(settings.min_face_size),
-        "min_brightness": round(float(settings.min_brightness), 4),
-        "max_brightness": round(float(settings.max_brightness), 4),
-        "blur_threshold": round(float(settings.max_blur_score), 4),
-        "max_yaw_score": round(float(settings.max_yaw_score), 4),
-        "max_occlusion_score": round(float(settings.max_occlusion_score), 4),
+        "min_face_size": int(merged_policy["min_face_size"]),
+        "min_brightness": round(float(merged_policy["min_brightness"]), 4),
+        "max_brightness": round(float(merged_policy["max_brightness"]), 4),
+        "blur_threshold": round(float(merged_policy["blur_threshold"]), 4),
+        "max_yaw_score": round(float(merged_policy["max_yaw_score"]), 4),
+        "max_occlusion_score": round(float(merged_policy["max_occlusion_score"]), 4),
     }
 
 
-def _breakdown_context(policy: dict) -> dict:
+def _breakdown_context(policy: dict, quality_policy: dict) -> dict:
     return {
         "recognition_thresholds": _recognition_thresholds(policy),
-        "quality_thresholds": _quality_thresholds(),
+        "quality_thresholds": _quality_thresholds(quality_policy),
     }
 
 
@@ -239,10 +206,9 @@ def evaluate_frame(
     if now < session.starts_at or now > session.ends_at:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Session is not active")
 
-    policy = _get_policy(db)
-    retention = db.get(AppSetting, "retention_policy")
-    stored_retention = retention.value if retention else {}
-    retention_policy = {**DEFAULT_RETENTION_POLICY, **stored_retention}
+    policy = get_recognition_policy(db)
+    quality_policy = get_quality_policy(db)
+    retention_policy = get_retention_policy(db)
     content, image = _read_upload(upload)
     detections = detector.detect(image)
 
@@ -258,7 +224,7 @@ def evaluate_frame(
             top_person_id=None,
             top_score=None,
             second_score=None,
-            breakdown={"message": "No face detected", **_breakdown_context(policy)},
+            breakdown={"message": "No face detected", **_breakdown_context(policy, quality_policy)},
             snapshot_path=None,
         )
         return {"attempt": attempt}
@@ -278,7 +244,7 @@ def evaluate_frame(
             breakdown={
                 "message": "Multiple faces detected; attendance rejected",
                 "detected_faces": len(detections),
-                **_breakdown_context(policy),
+                **_breakdown_context(policy, quality_policy),
             },
             snapshot_path=None,
         )
@@ -289,8 +255,8 @@ def evaluate_frame(
         "face_box": serialize_face_box(detections[0], image),
         "detector_confidence": round(float(detections[0].confidence), 4),
     }
-    quality = assess_quality(image, detections[0])
-    quality_score = compute_quality_score(quality)
+    quality = assess_quality(image, detections[0], quality_policy)
+    quality_score = compute_quality_score(quality, quality_policy)
     quality = {**quality, "quality_score": quality_score, **face_breakdown}
     if not quality["passed"]:
         attempt = _create_attempt(
@@ -304,7 +270,7 @@ def evaluate_frame(
             top_person_id=None,
             top_score=None,
             second_score=None,
-            breakdown={**quality, **_breakdown_context(policy)},
+            breakdown={**quality, **_breakdown_context(policy, quality_policy)},
             snapshot_path=None,
         )
         return {"attempt": attempt}
@@ -323,7 +289,7 @@ def evaluate_frame(
             top_person_id=None,
             top_score=None,
             second_score=None,
-            breakdown={"message": "Passive liveness threshold not met", **quality, **_breakdown_context(policy)},
+            breakdown={"message": "Passive liveness threshold not met", **quality, **_breakdown_context(policy, quality_policy)},
             snapshot_path=None,
         )
         if session.review_unknowns:
@@ -405,7 +371,7 @@ def evaluate_frame(
         "second_person_name": second_person_name,
         "second_score_raw": round(float(second_score), 4) if second_score is not None else None,
         "margin_raw": round(float(margin), 4) if margin is not None else None,
-        **_breakdown_context(policy),
+        **_breakdown_context(policy, quality_policy),
     }
 
     if not top or top_score is None or top_score < policy["similarity_threshold"]:
@@ -480,6 +446,7 @@ def evaluate_frame(
         session_id,
         client_key,
         CandidateFrame(timestamp=now, person_id=top["person_id"], similarity=top_score, second_score=second_score or 0.0),
+        window_seconds=int(policy["consensus_window_seconds"]),
     )
     matching_frames = [frame for frame in window if frame.person_id == top["person_id"] and frame.similarity >= policy["similarity_threshold"]]
     average_similarity = sum(frame.similarity for frame in matching_frames) / len(matching_frames)
