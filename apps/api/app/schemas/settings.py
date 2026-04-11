@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class RecognitionPolicy(BaseModel):
@@ -17,6 +17,12 @@ class QualityPolicy(BaseModel):
     blur_threshold: float = Field(ge=0.0)
     max_yaw_score: float = Field(ge=0.0)
     max_occlusion_score: float = Field(ge=0.0)
+
+    @model_validator(mode="after")
+    def brightness_range_valid(self) -> "QualityPolicy":
+        if self.max_brightness < self.min_brightness:
+            raise ValueError("max_brightness must be >= min_brightness")
+        return self
 
 
 class RetentionPolicy(BaseModel):
@@ -41,6 +47,13 @@ class QualityPolicyUpdate(BaseModel):
     blur_threshold: float | None = Field(default=None, ge=0.0)
     max_yaw_score: float | None = Field(default=None, ge=0.0)
     max_occlusion_score: float | None = Field(default=None, ge=0.0)
+
+    @model_validator(mode="after")
+    def brightness_range_valid(self) -> "QualityPolicyUpdate":
+        if self.min_brightness is not None and self.max_brightness is not None:
+            if self.max_brightness < self.min_brightness:
+                raise ValueError("max_brightness must be >= min_brightness")
+        return self
 
 
 class RetentionPolicyUpdate(BaseModel):
