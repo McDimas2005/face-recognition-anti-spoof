@@ -1,12 +1,13 @@
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_roles
 from app.db.session import get_db
 from app.models.domain import AttendanceEvent, AttendanceSource, AttendanceStatus, ReviewCase, ReviewStatus, UserRole
+from app.schemas.common import MessageResponse
 from app.schemas.review import ReviewCaseResponse, ReviewResolveRequest
 from app.services.audit import write_audit_log
 
@@ -19,6 +20,33 @@ def list_review_cases(
     actor=Depends(require_roles(UserRole.superadmin, UserRole.admin, UserRole.reviewer, UserRole.viewer)),
 ):
     return list(db.scalars(select(ReviewCase).order_by(ReviewCase.created_at.desc())).all())
+
+
+@router.delete("", response_model=MessageResponse)
+def clear_review_cases_route(
+    db: Session = Depends(get_db),
+    actor=Depends(require_roles(UserRole.superadmin, UserRole.admin, UserRole.reviewer)),
+) -> MessageResponse:
+    db.execute(delete(ReviewCase))
+    write_audit_log(db, actor.id, "review_case", "all", "review_cases_cleared", {})
+    db.commit()
+    return MessageResponse(message="Review queue cleared")
+
+
+@router.delete("/{review_id}", response_model=MessageResponse)
+def delete_review_case(
+    review_id: str,
+    db: Session = Depends(get_db),
+    actor=Depends(require_roles(UserRole.superadmin, UserRole.admin, UserRole.reviewer)),
+) -> MessageResponse:
+    review = db.get(ReviewCase, review_id)
+    if not review:
+        raise HTTPException(status_code=404, detail="Review case not found")
+    review_details = {"reason": review.reason.value, "status": review.status.value}
+    db.delete(review)
+    write_audit_log(db, actor.id, "review_case", review_id, "review_case_deleted", review_details)
+    db.commit()
+    return MessageResponse(message="Review case deleted")
 
 
 @router.post("/{review_id}/resolve", response_model=ReviewCaseResponse)
@@ -86,4 +114,3 @@ def resolve_review_case(
     db.commit()
     db.refresh(review)
     return review
-

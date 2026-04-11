@@ -7,7 +7,7 @@ from app.db.session import get_db
 from app.models.domain import EnrollmentBatch, EnrollmentBatchStatus, UserRole
 from app.schemas.person import EnrollmentBatchCreate, EnrollmentBatchResponse, EnrollmentSampleResponse
 from app.services.audit import write_audit_log
-from app.services.enrollment import ensure_person, process_enrollment_sample
+from app.services.enrollment import ensure_person, next_capture_index, process_enrollment_sample
 
 router = APIRouter()
 
@@ -22,6 +22,10 @@ def create_batch(
     batch = EnrollmentBatch(
         person_id=payload.person_id,
         status=EnrollmentBatchStatus.incomplete,
+        is_active=False,
+        is_self_enrollment=False,
+        bypass_quality_validation=False,
+        target_sample_count=5,
         diversity_status={},
         quality_summary={},
         created_by=actor.id,
@@ -73,7 +77,15 @@ def upload_sample(
     )
     if not batch:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Enrollment batch not found")
-    sample = process_enrollment_sample(db, batch, image, diversity_tag)
+    sample = process_enrollment_sample(
+        db,
+        batch,
+        image,
+        diversity_tag,
+        capture_index=next_capture_index(batch),
+        bypass_quality_validation=batch.bypass_quality_validation,
+        activate_immediately=True,
+    )
     write_audit_log(
         db,
         actor.id,
@@ -85,4 +97,3 @@ def upload_sample(
     db.commit()
     db.refresh(sample)
     return sample
-

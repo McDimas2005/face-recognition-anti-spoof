@@ -35,3 +35,8 @@
 
 Change these immediately outside development.
 
+## Self-enrollment notes
+
+- `My Enrollment` lets the logged-in user capture a fresh 100-photo webcam batch for their owned identity.
+- The new live batch replaces the user's previous active enrollment only after finalize is confirmed.
+- Experimental quality bypass is intended for testing and development. It can accept low-quality single-face enrollment frames and may reduce recognition reliability.

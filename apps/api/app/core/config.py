@@ -22,18 +22,18 @@ class Settings(BaseSettings):
     bootstrap_admin_password: str = Field(default="ChangeMe123!", alias="API_BOOTSTRAP_ADMIN_PASSWORD")
     bootstrap_admin_name: str = Field(default="System Admin", alias="API_BOOTSTRAP_ADMIN_NAME")
     cors_origins_raw: str = Field(default="http://localhost:3000", alias="API_CORS_ORIGINS")
-    similarity_threshold: float = Field(default=0.82, alias="API_SIMILARITY_THRESHOLD")
-    commit_threshold: float = Field(default=0.86, alias="API_COMMIT_THRESHOLD")
-    ambiguity_margin: float = Field(default=0.04, alias="API_AMBIGUITY_MARGIN")
-    liveness_threshold: float = Field(default=0.55, alias="API_LIVENESS_THRESHOLD")
+    similarity_threshold: float = Field(default=0.58, alias="API_SIMILARITY_THRESHOLD")
+    commit_threshold: float = Field(default=0.62, alias="API_COMMIT_THRESHOLD")
+    ambiguity_margin: float = Field(default=0.02, alias="API_AMBIGUITY_MARGIN")
+    liveness_threshold: float = Field(default=0.28, alias="API_LIVENESS_THRESHOLD")
     consensus_frames: int = Field(default=3, alias="API_CONSENSUS_FRAMES")
     consensus_window_seconds: int = Field(default=5, alias="API_CONSENSUS_WINDOW_SECONDS")
-    min_face_size: int = Field(default=96, alias="API_MIN_FACE_SIZE")
-    max_yaw_score: float = Field(default=0.35, alias="API_MAX_YAW_SCORE")
-    max_occlusion_score: float = Field(default=0.45, alias="API_MAX_OCCLUSION_SCORE")
-    min_brightness: float = Field(default=40.0, alias="API_MIN_BRIGHTNESS")
-    max_brightness: float = Field(default=210.0, alias="API_MAX_BRIGHTNESS")
-    max_blur_score: float = Field(default=180.0, alias="API_MAX_BLUR_SCORE")
+    min_face_size: int = Field(default=80, alias="API_MIN_FACE_SIZE")
+    max_yaw_score: float = Field(default=0.5, alias="API_MAX_YAW_SCORE")
+    max_occlusion_score: float = Field(default=0.55, alias="API_MAX_OCCLUSION_SCORE")
+    min_brightness: float = Field(default=28.0, alias="API_MIN_BRIGHTNESS")
+    max_brightness: float = Field(default=225.0, alias="API_MAX_BRIGHTNESS")
+    max_blur_score: float = Field(default=110.0, alias="API_MAX_BLUR_SCORE")
 
     @property
     def cors_origins(self) -> list[str]:
@@ -41,4 +41,3 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-

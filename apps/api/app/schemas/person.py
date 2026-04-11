@@ -24,6 +24,7 @@ class PersonResponse(BaseModel):
     external_id: str | None
     notes: str | None
     is_active: bool
+    owner_user_id: str | None
     created_at: datetime
 
     class Config:
@@ -58,4 +59,3 @@ class EnrollmentSampleResponse(BaseModel):
 
     class Config:
         from_attributes = True
-

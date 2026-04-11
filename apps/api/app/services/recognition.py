@@ -25,10 +25,12 @@ from app.models.domain import (
     RecognitionOutcome,
     ReviewCase,
     ReviewReason,
+    Person,
     SessionAllowedPerson,
 )
-from app.providers.demo import assess_quality, crop_face, detector, embedder, index, liveness
+from app.providers.demo import assess_quality, crop_face, detector, embedder, index, liveness, supported_embedders
 from app.services.audit import write_audit_log
+from app.services.enrollment import compute_quality_score, serialize_face_box
 from app.services.settings import DEFAULT_RETENTION_POLICY
 
 
@@ -56,6 +58,22 @@ class TemporalConsensusStore:
 
 
 consensus_store = TemporalConsensusStore()
+LEGACY_DEMO_POLICY = {
+    "similarity_threshold": 0.82,
+    "commit_threshold": 0.86,
+    "ambiguity_margin": 0.04,
+    "liveness_threshold": 0.55,
+    "consensus_frames": 3,
+    "consensus_window_seconds": 5,
+}
+RECOMMENDED_DEMO_POLICY = {
+    "similarity_threshold": 0.58,
+    "commit_threshold": 0.62,
+    "ambiguity_margin": 0.02,
+    "liveness_threshold": 0.28,
+    "consensus_frames": 3,
+    "consensus_window_seconds": 5,
+}
 
 
 def _read_upload(upload: UploadFile) -> tuple[bytes, np.ndarray]:
@@ -68,9 +86,7 @@ def _read_upload(upload: UploadFile) -> tuple[bytes, np.ndarray]:
 
 def _get_policy(db: Session) -> dict:
     policy = db.get(AppSetting, "recognition_policy")
-    if policy:
-        return policy.value
-    return {
+    default_policy = {
         "similarity_threshold": settings.similarity_threshold,
         "commit_threshold": settings.commit_threshold,
         "ambiguity_margin": settings.ambiguity_margin,
@@ -78,6 +94,11 @@ def _get_policy(db: Session) -> dict:
         "consensus_frames": settings.consensus_frames,
         "consensus_window_seconds": settings.consensus_window_seconds,
     }
+    if policy:
+        if policy.value == LEGACY_DEMO_POLICY:
+            return RECOMMENDED_DEMO_POLICY
+        return {**default_policy, **policy.value}
+    return default_policy
 
 
 def _allowed_person_ids(db: Session, session_id: str) -> list[str]:
@@ -85,12 +106,57 @@ def _allowed_person_ids(db: Session, session_id: str) -> list[str]:
     return list(allowed)
 
 
-def _candidate_embeddings(db: Session, person_ids: list[str]) -> list[tuple[str, np.ndarray, bool]]:
+def _person_name_map(db: Session, person_ids: list[str]) -> dict[str, str]:
+    ids = list(dict.fromkeys(person_id for person_id in person_ids if person_id))
+    if not ids:
+        return {}
+    rows = db.execute(select(Person.id, Person.full_name).where(Person.id.in_(ids))).all()
+    return {person_id: full_name for person_id, full_name in rows}
+
+
+def _candidate_embeddings(db: Session, person_ids: list[str]) -> list[tuple[str, np.ndarray, bool, str]]:
     if not person_ids:
-        embeddings = db.scalars(select(FaceEmbedding)).all()
+        embeddings = db.scalars(select(FaceEmbedding).where(FaceEmbedding.is_active.is_(True))).all()
     else:
-        embeddings = db.scalars(select(FaceEmbedding).where(FaceEmbedding.person_id.in_(person_ids))).all()
-    return [(embedding.person_id, np.array(embedding.vector, dtype=np.float32), embedding.is_centroid) for embedding in embeddings]
+        embeddings = db.scalars(
+            select(FaceEmbedding).where(
+                FaceEmbedding.person_id.in_(person_ids),
+                FaceEmbedding.is_active.is_(True),
+            )
+        ).all()
+    return [
+        (embedding.person_id, np.array(embedding.vector, dtype=np.float32), embedding.is_centroid, embedding.model_name)
+        for embedding in embeddings
+    ]
+
+
+def _recognition_thresholds(policy: dict) -> dict:
+    return {
+        "similarity_threshold": round(float(policy["similarity_threshold"]), 4),
+        "commit_threshold": round(float(policy["commit_threshold"]), 4),
+        "ambiguity_margin": round(float(policy["ambiguity_margin"]), 4),
+        "liveness_threshold": round(float(policy["liveness_threshold"]), 4),
+        "consensus_frames": int(policy["consensus_frames"]),
+        "consensus_window_seconds": int(policy["consensus_window_seconds"]),
+    }
+
+
+def _quality_thresholds() -> dict:
+    return {
+        "min_face_size": int(settings.min_face_size),
+        "min_brightness": round(float(settings.min_brightness), 4),
+        "max_brightness": round(float(settings.max_brightness), 4),
+        "min_blur_score": round(float(settings.max_blur_score), 4),
+        "max_yaw_score": round(float(settings.max_yaw_score), 4),
+        "max_occlusion_score": round(float(settings.max_occlusion_score), 4),
+    }
+
+
+def _breakdown_context(policy: dict) -> dict:
+    return {
+        "recognition_thresholds": _recognition_thresholds(policy),
+        "quality_thresholds": _quality_thresholds(),
+    }
 
 
 def _create_attempt(
@@ -192,7 +258,7 @@ def evaluate_frame(
             top_person_id=None,
             top_score=None,
             second_score=None,
-            breakdown={"message": "No face detected"},
+            breakdown={"message": "No face detected", **_breakdown_context(policy)},
             snapshot_path=None,
         )
         return {"attempt": attempt}
@@ -209,13 +275,23 @@ def evaluate_frame(
             top_person_id=None,
             top_score=None,
             second_score=None,
-            breakdown={"message": "Multiple faces detected; attendance rejected"},
+            breakdown={
+                "message": "Multiple faces detected; attendance rejected",
+                "detected_faces": len(detections),
+                **_breakdown_context(policy),
+            },
             snapshot_path=None,
         )
         _create_review_case(db, attempt_id=attempt.id, session_id=session_id, reason=ReviewReason.multiple_faces, proposed_person_id=None)
         return {"attempt": attempt}
 
+    face_breakdown = {
+        "face_box": serialize_face_box(detections[0], image),
+        "detector_confidence": round(float(detections[0].confidence), 4),
+    }
     quality = assess_quality(image, detections[0])
+    quality_score = compute_quality_score(quality)
+    quality = {**quality, "quality_score": quality_score, **face_breakdown}
     if not quality["passed"]:
         attempt = _create_attempt(
             db,
@@ -228,7 +304,7 @@ def evaluate_frame(
             top_person_id=None,
             top_score=None,
             second_score=None,
-            breakdown=quality,
+            breakdown={**quality, **_breakdown_context(policy)},
             snapshot_path=None,
         )
         return {"attempt": attempt}
@@ -247,38 +323,90 @@ def evaluate_frame(
             top_person_id=None,
             top_score=None,
             second_score=None,
-            breakdown={"message": "Passive liveness threshold not met", **quality},
+            breakdown={"message": "Passive liveness threshold not met", **quality, **_breakdown_context(policy)},
             snapshot_path=None,
         )
         if session.review_unknowns:
             _create_review_case(db, attempt_id=attempt.id, session_id=session_id, reason=ReviewReason.spoof, proposed_person_id=None)
         return {"attempt": attempt}
 
-    probe = embedder.embed(face)
     person_ids = _allowed_person_ids(db, session_id)
     candidates = _candidate_embeddings(db, person_ids)
-    ranked = index.score(probe, candidates) if candidates else []
+    ranked: list[dict] = []
+    if candidates:
+        candidates_by_model: dict[str, list[tuple[str, np.ndarray, bool]]] = defaultdict(list)
+        for person_id, vector, is_centroid, model_name in candidates:
+            candidates_by_model[model_name].append((person_id, vector, is_centroid))
+        for model_name, model_candidates in candidates_by_model.items():
+            model_embedder = supported_embedders.get(model_name)
+            if not model_embedder:
+                continue
+            probe = model_embedder.embed(face)
+            compatible_candidates = [
+                (person_id, candidate_vector, is_centroid)
+                for person_id, candidate_vector, is_centroid in model_candidates
+                if candidate_vector.shape == probe.shape
+            ]
+            if not compatible_candidates:
+                continue
+            ranked.extend(
+                {
+                    **candidate,
+                    "model_name": model_name,
+                }
+                for candidate in index.score(probe, compatible_candidates)
+            )
+        ranked.sort(key=lambda item: item["similarity"], reverse=True)
 
     person_aggregates: dict[str, dict[str, float]] = {}
     for candidate in ranked:
         person_id = candidate["person_id"]
-        current = person_aggregates.setdefault(person_id, {"sample_best": -1.0, "centroid": -1.0})
+        current = person_aggregates.setdefault(
+            person_id,
+            {"sample_best": -1.0, "centroid": -1.0, "best_similarity": -1.0, "best_model_name": ""},
+        )
         if candidate["is_centroid"]:
             current["centroid"] = max(current["centroid"], candidate["similarity"])
         else:
             current["sample_best"] = max(current["sample_best"], candidate["similarity"])
+        if candidate["similarity"] > current["best_similarity"]:
+            current["best_similarity"] = candidate["similarity"]
+            current["best_model_name"] = candidate["model_name"]
 
     final_ranked = []
     for person_id, aggregate in person_aggregates.items():
         score = max(aggregate["sample_best"], 0.0) * 0.7 + max(aggregate["centroid"], 0.0) * 0.3
-        final_ranked.append({"person_id": person_id, "score": score})
+        final_ranked.append({"person_id": person_id, "score": score, "model_name": aggregate["best_model_name"]})
     final_ranked.sort(key=lambda item: item["score"], reverse=True)
+    person_names = _person_name_map(db, [item["person_id"] for item in final_ranked])
+    candidate_scores = [
+        {
+            "person_id": candidate["person_id"],
+            "person_name": person_names.get(candidate["person_id"]),
+            "score": round(float(candidate["score"]), 4),
+            "match_percent": round(float(candidate["score"]) * 100, 2),
+            "model_name": candidate["model_name"],
+        }
+        for candidate in final_ranked[:5]
+    ]
 
     top = final_ranked[0] if final_ranked else None
     second = final_ranked[1] if len(final_ranked) > 1 else None
     top_score = top["score"] if top else None
     second_score = second["score"] if second else None
     margin = (top_score - second_score) if top_score is not None and second_score is not None else None
+    top_person_name = person_names.get(top["person_id"]) if top else None
+    second_person_name = person_names.get(second["person_id"]) if second else None
+    recognition_context = {
+        "candidate_scores": candidate_scores,
+        "top_person_name": top_person_name,
+        "top_score_raw": round(float(top_score), 4) if top_score is not None else None,
+        "second_person_id": second["person_id"] if second else None,
+        "second_person_name": second_person_name,
+        "second_score_raw": round(float(second_score), 4) if second_score is not None else None,
+        "margin_raw": round(float(margin), 4) if margin is not None else None,
+        **_breakdown_context(policy),
+    }
 
     if not top or top_score is None or top_score < policy["similarity_threshold"]:
         attempt = _create_attempt(
@@ -292,7 +420,14 @@ def evaluate_frame(
             top_person_id=top["person_id"] if top else None,
             top_score=top_score,
             second_score=second_score,
-            breakdown={"message": "Unknown face", "margin": margin, **quality},
+            breakdown={
+                "message": "Unknown face",
+                "margin": margin,
+                "match_percent": round(top_score * 100, 2) if top_score is not None else None,
+                "top_model_name": top["model_name"] if top else None,
+                **quality,
+                **recognition_context,
+            },
             snapshot_path=None,
         )
         if session.review_unknowns:
@@ -319,7 +454,14 @@ def evaluate_frame(
             top_person_id=top["person_id"],
             top_score=top_score,
             second_score=second_score,
-            breakdown={"message": "Identity margin too small", "margin": margin, **quality},
+            breakdown={
+                "message": "Identity margin too small",
+                "margin": margin,
+                "match_percent": round(top_score * 100, 2),
+                "top_model_name": top["model_name"],
+                **quality,
+                **recognition_context,
+            },
             snapshot_path=None,
         )
         if session.review_ambiguous:
@@ -358,7 +500,10 @@ def evaluate_frame(
                 "message": "Stable candidate observed but not committed",
                 "matching_frames": len(matching_frames),
                 "average_similarity": average_similarity,
+                "match_percent": round(top_score * 100, 2),
+                "top_model_name": top["model_name"],
                 **quality,
+                **recognition_context,
             },
             snapshot_path=None,
         )
@@ -383,7 +528,13 @@ def evaluate_frame(
             top_person_id=top["person_id"],
             top_score=top_score,
             second_score=second_score,
-            breakdown={"message": "Duplicate attendance prevented", **quality},
+            breakdown={
+                "message": "Duplicate attendance prevented",
+                "match_percent": round(top_score * 100, 2),
+                "top_model_name": top["model_name"],
+                **quality,
+                **recognition_context,
+            },
             snapshot_path=None,
         )
         return {"attempt": attempt, "attendance_event": existing_event}
@@ -403,8 +554,11 @@ def evaluate_frame(
             "message": "Attendance committed",
             "matching_frames": len(matching_frames),
             "average_similarity": average_similarity,
+            "match_percent": round(top_score * 100, 2),
+            "top_model_name": top["model_name"],
             "liveness_note": "Passive liveness reduces spoofing risk; it does not guarantee spoof prevention.",
             **quality,
+            **recognition_context,
         },
         snapshot_path=None,
     )
@@ -429,4 +583,3 @@ def evaluate_frame(
         details={"session_id": session_id, "person_id": top["person_id"], "attempt_id": attempt.id},
     )
     return {"attempt": attempt, "attendance_event": attendance}
-

@@ -8,6 +8,7 @@ import { apiFetch, clearSession, readSession } from "@/lib/api";
 
 const navItems = [
   { href: "/", label: "Dashboard" },
+  { href: "/my-enrollment", label: "My Enrollment" },
   { href: "/users", label: "Users" },
   { href: "/people", label: "People" },
   { href: "/enrollments", label: "Enrollments" },

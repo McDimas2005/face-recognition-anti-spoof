@@ -6,7 +6,9 @@ from sqlalchemy.orm import Session, selectinload
 from app.api.deps import require_roles
 from app.db.session import get_db
 from app.models.domain import AttendanceSession, SessionAllowedPerson, UserRole
+from app.schemas.common import MessageResponse
 from app.schemas.session import AttendanceSessionCreate, AttendanceSessionResponse, AttendanceSessionUpdate
+from app.services.admin_cleanup import delete_session_graph
 from app.services.audit import write_audit_log
 
 router = APIRouter()
@@ -63,6 +65,22 @@ def create_session(
     db.commit()
     db.refresh(session)
     return _to_response(session)
+
+
+@router.delete("/{session_id}", response_model=MessageResponse)
+def delete_session_route(
+    session_id: str,
+    db: Session = Depends(get_db),
+    actor=Depends(require_roles(UserRole.superadmin, UserRole.admin)),
+) -> MessageResponse:
+    session = db.scalar(select(AttendanceSession).where(AttendanceSession.id == session_id))
+    if not session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    session_details = {"name": session.name}
+    delete_session_graph(db, session)
+    write_audit_log(db, actor.id, "attendance_session", session_id, "session_deleted", session_details)
+    db.commit()
+    return MessageResponse(message="Session deleted")
 
 
 @router.patch("/{session_id}", response_model=AttendanceSessionResponse)

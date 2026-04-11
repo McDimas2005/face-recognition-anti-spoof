@@ -10,6 +10,11 @@
 
 - `GET|POST|PATCH /api/users`
 - `GET|POST|PATCH /api/persons`
+- `GET /api/me/enrollment/live`
+- `POST /api/me/enrollment/live/start`
+- `POST /api/me/enrollment/live/frame`
+- `POST /api/me/enrollment/live/finalize`
+- `DELETE /api/me/enrollment/live/samples/{sample_id}`
 - `POST /api/enrollments/batches`
 - `GET /api/enrollments/batches/{batch_id}`
 - `POST /api/enrollments/batches/{batch_id}/samples`
@@ -23,4 +28,3 @@
 - `GET /api/health/live`
 - `GET /api/health/ready`
 - `GET /api/health/metrics`
-

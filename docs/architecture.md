@@ -27,4 +27,6 @@
 - One frame is never enough to mark attendance.
 - Manual overrides are separate attendance sources and always audited.
 - Enrollment remains incomplete until all five required diversity tags are satisfied.
-
+- Self-enrollment batches for the logged-in user stay inactive until 100 accepted live photos are captured and finalize is confirmed.
+- After self-enrollment replacement, the owned identity keeps at most 100 active enrollment photos for recognition use.
+- Experimental quality bypass still requires exactly one detectable face and is expected to reduce recognition reliability.
