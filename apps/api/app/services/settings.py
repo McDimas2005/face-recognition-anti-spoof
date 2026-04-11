@@ -28,7 +28,6 @@ DEFAULT_QUALITY_POLICY = {
     "max_yaw_score": settings.max_yaw_score,
     "max_occlusion_score": settings.max_occlusion_score,
 }
-RECOMMENDED_DEMO_POLICY = DEFAULT_RECOGNITION_POLICY.copy()
 
 DEFAULT_RETENTION_POLICY = {
     "retain_enrollment_images": settings.retain_enrollment_images,
@@ -45,7 +44,7 @@ def get_setting(db: Session, key: str, default: dict) -> dict:
 def get_recognition_policy(db: Session) -> dict:
     policy = get_setting(db, "recognition_policy", DEFAULT_RECOGNITION_POLICY)
     if policy == LEGACY_DEMO_POLICY:
-        return RECOMMENDED_DEMO_POLICY.copy()
+        return DEFAULT_RECOGNITION_POLICY.copy()
     return {**DEFAULT_RECOGNITION_POLICY, **policy}
 
 

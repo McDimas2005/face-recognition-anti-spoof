@@ -8,7 +8,7 @@ from app.core.config import settings
 from app.core.security import hash_password
 from app.db.base import Base
 from app.models.domain import AppSetting, User, UserRole
-from app.services.settings import LEGACY_DEMO_POLICY, RECOMMENDED_DEMO_POLICY
+from app.services.settings import DEFAULT_RECOGNITION_POLICY, LEGACY_DEMO_POLICY
 
 connect_args = {"check_same_thread": False} if settings.database_url.startswith("sqlite") else {}
 engine = create_engine(settings.database_url, future=True, connect_args=connect_args)
@@ -45,11 +45,11 @@ def seed_bootstrap_admin() -> None:
             db.add(
                 AppSetting(
                     key="recognition_policy",
-                    value=RECOMMENDED_DEMO_POLICY,
+                    value=DEFAULT_RECOGNITION_POLICY,
                     updated_by=None,
                 )
             )
         elif recognition_policy.value == LEGACY_DEMO_POLICY:
-            recognition_policy.value = RECOMMENDED_DEMO_POLICY
+            recognition_policy.value = DEFAULT_RECOGNITION_POLICY
 
         db.commit()
