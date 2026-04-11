@@ -146,7 +146,7 @@ def _quality_thresholds() -> dict:
         "min_face_size": int(settings.min_face_size),
         "min_brightness": round(float(settings.min_brightness), 4),
         "max_brightness": round(float(settings.max_brightness), 4),
-        "min_blur_score": round(float(settings.max_blur_score), 4),
+        "blur_threshold": round(float(settings.max_blur_score), 4),
         "max_yaw_score": round(float(settings.max_yaw_score), 4),
         "max_occlusion_score": round(float(settings.max_occlusion_score), 4),
     }
