@@ -181,7 +181,7 @@ export default function LogsPage() {
                         <p>Min face size: {formatNumber(qualityThresholds.min_face_size, 0)}</p>
                         <p>Min brightness: {formatNumber(qualityThresholds.min_brightness)}</p>
                         <p>Max brightness: {formatNumber(qualityThresholds.max_brightness)}</p>
-                        <p>Min blur score: {formatNumber(qualityThresholds.min_blur_score)}</p>
+                        <p>Min blur score: {formatNumber(qualityThresholds.blur_threshold)}</p>
                         <p>Max yaw score: {formatNumber(qualityThresholds.max_yaw_score)}</p>
                         <p>Max occlusion: {formatNumber(qualityThresholds.max_occlusion_score)}</p>
                       </div>

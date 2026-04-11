@@ -9,6 +9,17 @@ from app.core.config import settings
 from app.providers.base import EmbeddingIndex, FaceBox, FaceDetector, FaceEmbedder, LivenessScorer
 
 
+def _default_quality_policy() -> dict:
+    return {
+        "min_face_size": int(settings.min_face_size),
+        "min_brightness": float(settings.min_brightness),
+        "max_brightness": float(settings.max_brightness),
+        "blur_threshold": float(settings.max_blur_score),
+        "max_yaw_score": float(settings.max_yaw_score),
+        "max_occlusion_score": float(settings.max_occlusion_score),
+    }
+
+
 def _locate_asset(*parts: str) -> Path | None:
     current = Path(__file__).resolve()
     for parent in current.parents:
@@ -200,7 +211,8 @@ def crop_face(image: np.ndarray, box: FaceBox) -> np.ndarray:
     return image[y0:y1, x0:x1]
 
 
-def assess_quality(image: np.ndarray, box: FaceBox) -> dict:
+def assess_quality(image: np.ndarray, box: FaceBox, quality_policy: dict | None = None) -> dict:
+    policy = {**_default_quality_policy(), **(quality_policy or {})}
     face = crop_face(image, box)
     if face.size == 0:
         return {"passed": False, "reason": "invalid_crop", "face_size": 0}
@@ -218,19 +230,19 @@ def assess_quality(image: np.ndarray, box: FaceBox) -> dict:
 
     passed = True
     reason = None
-    if face_size < settings.min_face_size:
+    if face_size < policy["min_face_size"]:
         passed = False
         reason = "face_too_small"
-    elif brightness < settings.min_brightness or brightness > settings.max_brightness:
+    elif brightness < policy["min_brightness"] or brightness > policy["max_brightness"]:
         passed = False
         reason = "brightness_out_of_range"
-    elif blur_score < settings.max_blur_score:
+    elif blur_score < policy["blur_threshold"]:
         passed = False
         reason = "image_too_blurry"
-    elif yaw_score > settings.max_yaw_score:
+    elif yaw_score > policy["max_yaw_score"]:
         passed = False
         reason = "pose_not_frontal_enough"
-    elif occlusion_score > settings.max_occlusion_score:
+    elif occlusion_score > policy["max_occlusion_score"]:
         passed = False
         reason = "possible_occlusion"
 

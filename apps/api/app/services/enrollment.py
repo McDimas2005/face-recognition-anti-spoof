@@ -15,6 +15,7 @@ from app.core.config import settings
 from app.models.domain import EnrollmentBatch, EnrollmentBatchStatus, EnrollmentSample, FaceEmbedding, Person, User, UserRole
 from app.providers.base import FaceBox
 from app.providers.demo import assess_quality, crop_face, detector, embedder
+from app.services.settings import DEFAULT_QUALITY_POLICY, get_quality_policy
 
 REQUIRED_DIVERSITY_TAGS = [
     "frontal_neutral",
@@ -39,15 +40,16 @@ def serialize_face_box(box: FaceBox, image: np.ndarray) -> dict:
     }
 
 
-def compute_quality_score(quality: dict) -> float:
-    face_size_score = min(float(quality.get("face_size", 0)) / max(float(settings.min_face_size) * 1.5, 1.0), 1.0)
-    blur_score = min(float(quality.get("blur_score", 0.0)) / max(settings.max_blur_score * 1.5, 1.0), 1.0)
+def compute_quality_score(quality: dict, quality_policy: dict | None = None) -> float:
+    policy = {**DEFAULT_QUALITY_POLICY, **(quality_policy or {})}
+    face_size_score = min(float(quality.get("face_size", 0)) / max(float(policy["min_face_size"]) * 1.5, 1.0), 1.0)
+    blur_score = min(float(quality.get("blur_score", 0.0)) / max(float(policy["blur_threshold"]) * 1.5, 1.0), 1.0)
     brightness = float(quality.get("brightness", 0.0))
-    brightness_mid = (settings.min_brightness + settings.max_brightness) / 2
-    brightness_span = max((settings.max_brightness - settings.min_brightness) / 2, 1.0)
+    brightness_mid = (float(policy["min_brightness"]) + float(policy["max_brightness"])) / 2
+    brightness_span = max((float(policy["max_brightness"]) - float(policy["min_brightness"])) / 2, 1.0)
     brightness_score = max(0.0, 1.0 - abs(brightness - brightness_mid) / brightness_span)
-    yaw_score = max(0.0, 1.0 - float(quality.get("yaw_score", 1.0)) / max(settings.max_yaw_score, 0.001))
-    occlusion_score = max(0.0, 1.0 - float(quality.get("occlusion_score", 1.0)) / max(settings.max_occlusion_score, 0.001))
+    yaw_score = max(0.0, 1.0 - float(quality.get("yaw_score", 1.0)) / max(float(policy["max_yaw_score"]), 0.001))
+    occlusion_score = max(0.0, 1.0 - float(quality.get("occlusion_score", 1.0)) / max(float(policy["max_occlusion_score"]), 0.001))
     score = (face_size_score * 0.2) + (blur_score * 0.3) + (brightness_score * 0.2) + (yaw_score * 0.15) + (occlusion_score * 0.15)
     return round(max(0.0, min(score, 1.0)), 4)
 
@@ -243,8 +245,9 @@ def process_enrollment_sample(
         batch.diversity_status, batch.quality_summary, batch.status = evaluate_batch(batch)
         return sample
 
-    quality = assess_quality(image, detections[0])
-    quality_score = compute_quality_score(quality)
+    quality_policy = get_quality_policy(db)
+    quality = assess_quality(image, detections[0], quality_policy)
+    quality_score = compute_quality_score(quality, quality_policy)
     actual_quality_passed = bool(quality["passed"])
     quality_bypassed = bypass_quality_validation and not actual_quality_passed and quality.get("reason") not in HARD_QUALITY_REJECTIONS
     accepted = actual_quality_passed or quality_bypassed
