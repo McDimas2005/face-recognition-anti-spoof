@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { CSSProperties, useEffect, useRef, useState } from "react";
 
 import { apiFetch, readSession } from "@/lib/api";
 
@@ -45,6 +45,25 @@ function readFaceBox(breakdown: Record<string, unknown>): FaceBox | null {
     return null;
   }
   return candidate as FaceBox;
+}
+
+function getFaceBoxStyle(faceBox: FaceBox, video: HTMLVideoElement): CSSProperties {
+  const containerW = video.clientWidth;
+  const containerH = video.clientHeight;
+  const imgW = faceBox.image_width;
+  const imgH = faceBox.image_height;
+  if (containerW === 0 || containerH === 0 || imgW === 0 || imgH === 0) {
+    return { display: "none" };
+  }
+  const scale = Math.min(containerW / imgW, containerH / imgH);
+  const offsetX = (containerW - imgW * scale) / 2;
+  const offsetY = (containerH - imgH * scale) / 2;
+  return {
+    left: `${offsetX + faceBox.x * scale}px`,
+    top: `${offsetY + faceBox.y * scale}px`,
+    width: `${faceBox.width * scale}px`,
+    height: `${faceBox.height * scale}px`,
+  };
 }
 
 export function AttendanceCamera({ sessions }: { sessions: SessionOption[] }) {
@@ -177,15 +196,10 @@ export function AttendanceCamera({ sessions }: { sessions: SessionOption[] }) {
             playsInline
             className="aspect-video w-full rounded-3xl bg-ink object-contain"
           />
-          {faceBox ? (
+          {faceBox && videoRef.current ? (
             <div
               className="pointer-events-none absolute border-4 border-emerald-400 shadow-[0_0_0_9999px_rgba(0,0,0,0.08)]"
-              style={{
-                left: `${(faceBox.x / faceBox.image_width) * 100}%`,
-                top: `${(faceBox.y / faceBox.image_height) * 100}%`,
-                width: `${(faceBox.width / faceBox.image_width) * 100}%`,
-                height: `${(faceBox.height / faceBox.image_height) * 100}%`,
-              }}
+              style={getFaceBoxStyle(faceBox, videoRef.current)}
             >
               <div className="absolute -top-10 left-0 rounded-xl bg-emerald-500 px-3 py-2 text-xs font-semibold text-white">
                 {overlayLabel}
