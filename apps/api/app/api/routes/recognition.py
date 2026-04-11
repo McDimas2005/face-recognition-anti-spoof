@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, require_roles
+from app.api.deps import require_roles
 from app.db.session import get_db
-from app.models.domain import UserRole
+from app.models.domain import Person, UserRole
 from app.schemas.recognition import RecognitionResponse
 from app.services.recognition import evaluate_frame
 
@@ -22,10 +22,12 @@ def evaluate(
     db.commit()
     attempt = result["attempt"]
     attendance_event = result.get("attendance_event")
+    top_person = db.get(Person, attempt.top_person_id) if attempt.top_person_id else None
     return RecognitionResponse(
         attempt_id=attempt.id,
         state=attempt.outcome,
         top_person_id=attempt.top_person_id,
+        top_person_name=top_person.full_name if top_person else attempt.breakdown.get("top_person_name"),
         top_score=attempt.top_score,
         second_score=attempt.second_score,
         liveness_score=attempt.liveness_score,
@@ -33,4 +35,3 @@ def evaluate(
         breakdown=attempt.breakdown,
         attendance_event_id=attendance_event.id if attendance_event else None,
     )
-

@@ -13,6 +13,7 @@ class UserCreate(BaseModel):
 
 
 class UserUpdate(BaseModel):
+    email: EmailStr | None = None
     full_name: str | None = None
     password: str | None = None
     role: UserRole | None = None
@@ -29,4 +30,3 @@ class UserResponse(BaseModel):
 
     class Config:
         from_attributes = True
-

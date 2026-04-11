@@ -21,7 +21,15 @@ export async function apiFetch<T>(
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || `Request failed: ${response.status}`);
+    if (text) {
+      try {
+        const parsed = JSON.parse(text) as { detail?: string };
+        throw new Error(parsed.detail || text);
+      } catch {
+        throw new Error(text);
+      }
+    }
+    throw new Error(`Request failed: ${response.status}`);
   }
 
   return response.json() as Promise<T>;
@@ -47,4 +55,3 @@ export function writeSession(session: AuthSession) {
 export function clearSession() {
   window.localStorage.removeItem("attendance-session");
 }
-

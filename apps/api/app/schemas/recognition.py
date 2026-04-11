@@ -9,6 +9,7 @@ class RecognitionResponse(BaseModel):
     attempt_id: str
     state: RecognitionOutcome
     top_person_id: str | None = None
+    top_person_name: str | None = None
     top_score: float | None = None
     second_score: float | None = None
     liveness_score: float | None = None
@@ -26,6 +27,7 @@ class RecognitionAttemptResponse(BaseModel):
     quality_passed: bool
     liveness_score: float | None
     top_person_id: str | None
+    top_person_name: str | None = None
     top_score: float | None
     second_score: float | None
     breakdown: dict
@@ -39,6 +41,7 @@ class AttendanceEventResponse(BaseModel):
     id: str
     session_id: str
     person_id: str
+    person_name: str | None = None
     source: str
     status: str
     recognized_at: datetime
@@ -46,4 +49,3 @@ class AttendanceEventResponse(BaseModel):
 
     class Config:
         from_attributes = True
-

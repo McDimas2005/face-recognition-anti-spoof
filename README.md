@@ -42,11 +42,17 @@ This project addresses those problems with a more structured workflow:
 - **Structured face enrollment workflow**
   - Administrators create a person record, open an enrollment batch, and upload multiple enrollment samples before the identity becomes recognition-ready.
 
+- **Self-enrollment live capture for authenticated users**
+  - A logged-in user can open `My Enrollment`, capture 100 live webcam photos for their owned identity, and replace their active enrollment set without using the admin upload flow.
+
 - **Embedding-based recognition**
   - The system stores face embeddings and compares probe embeddings against a shared identity store instead of training one classifier per person.
 
 - **Quality-gated enrollment and recognition**
   - Images are evaluated for face count, face size, blur, brightness, pose, and basic occlusion heuristics before being accepted.
+
+- **Experimental quality-bypass mode**
+  - Self-enrollment supports an explicitly labeled experimental mode that accepts low-quality single-face enrollment frames for testing. It still rejects empty, unreadable, and multi-face frames, and it is expected to reduce recognition reliability.
 
 - **Passive liveness / anti-spoof gating**
   - A liveness score is computed before identity matching is allowed to progress. This reduces spoofing risk but is not presented as a guarantee.
@@ -65,6 +71,7 @@ This project addresses those problems with a more structured workflow:
 
 - **Admin dashboard**
   - The Next.js frontend includes views for users, people, enrollments, sessions, live attendance, logs, review queue, settings, and diagnostics.
+  - The web app also includes `My Enrollment` for authenticated self-service enrollment replacement.
 
 - **Audit logging**
   - Administrative actions and attendance decisions are recorded as audit logs, with manual overrides intentionally separated from AI-confirmed attendance.
@@ -111,6 +118,16 @@ The system is designed around a clear operational workflow rather than an ad hoc
   - basic occlusion rejection
 
 - The batch remains incomplete until at least five valid samples are accepted and all required diversity tags are covered.
+
+### 4b. A user can replace their own enrollment with a live capture batch
+
+- The `My Enrollment` page resolves or provisions exactly one owned `person` identity for the logged-in user.
+- The browser opens the webcam, guides the user through a structured capture loop, and accepts frames until 100 enrollment photos are stored in the draft batch.
+- The live enrollment UI shows the current face box, detector confidence, and quality score while capture is running.
+- An explicitly labeled experimental bypass mode can skip soft quality heuristics for self-enrollment, but it still rejects zero-face, invalid-crop, and multi-face frames.
+- The new batch stays inactive until the user explicitly confirms replacement.
+- Finalization deactivates the previous active enrollment set, activates the new 100-photo set, and refreshes the active centroid embedding used by recognition.
+- After replacement, the owned identity keeps at most 100 active enrollment photos for recognition use.
 
 ### 5. Embeddings are generated and stored
 
@@ -167,13 +184,25 @@ This repository uses an embedding-based workflow because it scales better operat
 
 ### Face detection
 
-The provider layer is designed to support stronger detector backends later. In the current codebase, the default shipped provider is a demo implementation based on OpenCV Haar cascade detection.
+The provider layer is designed to support stronger detector backends later. In the current codebase, the default shipped provider uses an OpenCV DNN SSD face detector backed by the legacy `res10_300x300_ssd_iter_140000.caffemodel` artifact when it is present in `legacy/DNN`.
 
-That means the architecture is production-oriented, but the default detector is not a production-grade model.
+If those assets are missing, the detector falls back to an OpenCV Haar cascade.
+
+That means the architecture is production-oriented, but the shipped default detector is still a development/demo choice rather than a calibrated production deployment model.
 
 ### Alignment and preprocessing
 
-The long-term design anticipates detection plus alignment, but the current default provider performs a cropped-face flow without a dedicated alignment model. Quality heuristics are still applied before recognition.
+The long-term design anticipates detection plus alignment, but the current default provider still performs a cropped-face flow without a dedicated landmark/alignment model.
+
+The preprocessing path currently includes:
+
+- padded face crop around the detected box
+- grayscale normalization
+- CLAHE contrast normalization
+- Gaussian smoothing
+- fixed-size resizing for descriptor generation
+
+Quality heuristics are applied before recognition or enrollment acceptance.
 
 ### Embedding-based recognition
 
@@ -185,6 +214,7 @@ During recognition:
 - that embedding is compared to stored sample embeddings and centroid embeddings
 - exact cosine-style comparison logic is used
 - candidate ranking is aggregated per person
+- the best sample score and best centroid score are blended into a final per-person score
 
 Why this is preferable to a per-user classifier:
 
@@ -192,6 +222,20 @@ Why this is preferable to a per-user classifier:
 - one global identity store is easier to maintain
 - open-set handling becomes more natural
 - thresholds and review workflows are easier to express
+
+### Current shipped demo provider
+
+The repo currently ships with a stronger demo provider than the original prototype stack:
+
+| Component | Current shipped implementation | Notes |
+| --- | --- | --- |
+| Face detector | `demo-opencv-dnn-ssd` | Uses OpenCV DNN SSD from `legacy/DNN`, with Haar fallback |
+| Primary embedder | `demo-robust-handcrafted-embedder` | Handcrafted descriptor using LBP-style histograms, HOG, coarse grayscale, and gradient histograms |
+| Legacy embedder support | `demo-histogram-embedder` | Kept for compatibility with older enrollments already stored in the database |
+| Liveness scorer | `demo-heuristic-liveness` | Heuristic passive score, not production anti-spoof |
+| Matching index | `exact-cosine` | In-process exact similarity scoring |
+
+This improves the shipped default behavior, but it is still not equivalent to a modern pretrained ArcFace / RetinaFace-style stack.
 
 ### Liveness / anti-spoof gating
 
@@ -215,6 +259,77 @@ The backend exposes configurable settings for:
 - consensus window duration
 
 If the top candidate is too weak, the result becomes `unknown`. If the top and second-best candidates are too close, the result becomes `ambiguous`.
+
+### Current default thresholds and scores
+
+The current development/demo defaults are stored in `models/calibration-defaults.json` and mirrored in the API settings.
+
+| Setting | Current default | Meaning |
+| --- | --- | --- |
+| Similarity threshold | `0.58` | Minimum top-person score required before a frame can leave `unknown` |
+| Commit threshold | `0.62` | Minimum average similarity across the consensus window before attendance is committed |
+| Ambiguity margin | `0.02` | Minimum separation required between the top and second-best candidate |
+| Liveness threshold | `0.28` | Minimum passive liveness score required before matching is allowed to continue |
+| Consensus frames | `3` | Number of accepted frames needed in the rolling window |
+| Consensus window | `5` seconds | Rolling time window used for temporal consensus |
+| Minimum face size | `80` | Smallest accepted face crop edge length |
+| Minimum brightness | `28.0` | Lower bound of accepted average grayscale brightness |
+| Maximum brightness | `225.0` | Upper bound of accepted average grayscale brightness |
+| Minimum blur score | `110.0` | Minimum Laplacian variance used as the blur gate |
+| Maximum yaw score | `0.5` | Maximum left/right brightness asymmetry tolerated before pose rejection |
+| Maximum occlusion score | `0.55` | Maximum top/bottom brightness asymmetry tolerated before occlusion rejection |
+
+Important implementation detail:
+
+- `top_score` is the final aggregated person score used for decision-making.
+- That score blends sample and centroid evidence as `0.7 * best_sample_similarity + 0.3 * best_centroid_similarity`.
+- `second_score` is the same aggregated value for the second-ranked person.
+- `margin` is `top_score - second_score`.
+- `match_percent` is a UI-friendly rendering of `top_score * 100`.
+- `quality_score` is a normalized helper score in the range `0.0` to `1.0` built from face size, blur, brightness, pose, and occlusion heuristics.
+- The current quality-score weighting is `0.20 face_size + 0.30 blur + 0.20 brightness + 0.15 yaw + 0.15 occlusion`.
+- `detector_confidence` is the face detector’s box confidence for the selected face.
+
+The `quality_score` is not itself the hard acceptance gate. The hard gate still comes from the individual checks for face count, face size, brightness, blur, pose, and occlusion.
+
+### What is logged for each recognition attempt
+
+Each recognition attempt stores a structured `breakdown` payload. New attempts include the raw numbers needed to inspect why a frame was accepted, rejected, kept as a candidate, or marked unknown.
+
+The current breakdown typically includes:
+
+- human-readable message such as `Unknown face`, `Identity margin too small`, or `Attendance committed`
+- `face_box` coordinates and source image dimensions
+- `detector_confidence`
+- `blur_score`
+- `brightness`
+- `yaw_score`
+- `occlusion_score`
+- `quality_score`
+- `top_person_name`
+- `top_score_raw`
+- `second_person_id`
+- `second_person_name`
+- `second_score_raw`
+- `margin_raw`
+- `match_percent`
+- `top_model_name`
+- `candidate_scores` for the top ranked candidates
+- `recognition_thresholds`
+- `quality_thresholds`
+- `matching_frames` and `average_similarity` when temporal consensus is in progress or attendance is committed
+
+In addition to the `breakdown`, the recognition-attempt record itself stores:
+
+- `face_count`
+- `quality_passed`
+- `liveness_score`
+- `top_person_id`
+- `top_score`
+- `second_score`
+- final `outcome`
+
+This data is exposed in the Logs page and in the live decision breakdown panel so operators can see both the decision and the numbers behind it.
 
 ### Demo model mode vs production-safe model mode
 
@@ -534,6 +649,7 @@ After the system starts, a good first-run path is:
 - Start webcam capture in the browser.
 - Frames are sent to the backend.
 - The backend evaluates face count, quality, liveness, embedding match, and temporal consistency.
+- The operator sees the detected face box, current recognition state, current scores, and the recognized user name when a face is matched.
 - If the policy passes, an attendance event is created.
 - If the person is already marked present, the system records a duplicate attempt instead.
 
@@ -549,6 +665,7 @@ After the system starts, a good first-run path is:
 - Manage people and enrollment readiness.
 - Create sessions and define attendance windows.
 - Review logs, recognition attempts, attendance events, and review cases.
+- Inspect detailed per-attempt breakdowns including thresholds, raw scores, and top candidate information.
 - Adjust thresholds and retention-related settings from the settings page.
 
 ## Security, Privacy, and Responsible Use
@@ -590,8 +707,8 @@ The application already includes a real full-stack structure, domain model, admi
 The current implementation is intentionally honest about its boundaries.
 
 - The default AI provider is demo-grade:
-  - OpenCV Haar detection
-  - histogram-style embeddings
+  - OpenCV DNN SSD detection with legacy asset dependency and Haar fallback
+  - handcrafted embeddings rather than a modern pretrained face-recognition network
   - heuristic liveness scoring
 
 - Face alignment is not yet implemented with a dedicated production detector/alignment stack.
@@ -601,6 +718,8 @@ The current implementation is intentionally honest about its boundaries.
 - The system does not guarantee protection against all spoofing methods.
 
 - Thresholds are configurable, but production calibration is still required.
+
+- Older databases may temporarily contain mixed embedding families from previous demo providers. The current code handles those safely, but the best operational result still comes from re-enrolling after provider upgrades.
 
 - V1 uses local file storage rather than a cloud object storage adapter.
 
@@ -648,4 +767,3 @@ Important usage note:
 - Model weights, pretrained artifacts, example datasets, or legacy assets may have separate licensing constraints.
 - The presence of demo-grade or historical model assets in the project history does **not** imply commercial deployment rights.
 - Before any real production use, verify the licensing status of all model artifacts and the legal basis for any biometric data processing.
-

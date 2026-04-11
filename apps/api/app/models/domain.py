@@ -74,6 +74,12 @@ class User(Base):
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
+    owned_person: Mapped["Person | None"] = relationship(
+        back_populates="owner_user",
+        uselist=False,
+        foreign_keys="Person.owner_user_id",
+    )
+
 
 class Person(Base):
     __tablename__ = "persons"
@@ -83,9 +89,11 @@ class Person(Base):
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
     notes: Mapped[str | None] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    owner_user_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     created_by: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"))
 
+    owner_user: Mapped["User | None"] = relationship(back_populates="owned_person", foreign_keys=[owner_user_id])
     enrollment_batches: Mapped[list["EnrollmentBatch"]] = relationship(back_populates="person", cascade="all, delete-orphan")
     embeddings: Mapped[list["FaceEmbedding"]] = relationship(back_populates="person", cascade="all, delete-orphan")
 
@@ -100,10 +108,16 @@ class EnrollmentBatch(Base):
         default=EnrollmentBatchStatus.incomplete,
         nullable=False,
     )
+    is_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_self_enrollment: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    bypass_quality_validation: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    target_sample_count: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
+    replacement_for_batch_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("enrollment_batches.id"))
     diversity_status: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     quality_summary: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     created_by: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    finalized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     person: Mapped["Person"] = relationship(back_populates="enrollment_batches")
     samples: Mapped[list["EnrollmentSample"]] = relationship(back_populates="batch", cascade="all, delete-orphan")
@@ -117,6 +131,8 @@ class EnrollmentSample(Base):
     diversity_tag: Mapped[str] = mapped_column(String(50), nullable=False)
     quality_passed: Mapped[bool] = mapped_column(Boolean, nullable=False)
     quality_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    capture_index: Mapped[int | None] = mapped_column(Integer)
     metadata_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     storage_path: Mapped[str | None] = mapped_column(String(512))
     rejection_reason: Mapped[str | None] = mapped_column(String(255))
@@ -135,6 +151,7 @@ class FaceEmbedding(Base):
     model_name: Mapped[str] = mapped_column(String(100), nullable=False)
     vector: Mapped[list[float]] = mapped_column(JSON, nullable=False)
     norm: Mapped[float] = mapped_column(Float, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_centroid: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
@@ -239,4 +256,3 @@ class AppSetting(Base):
     value: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     updated_by: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
-

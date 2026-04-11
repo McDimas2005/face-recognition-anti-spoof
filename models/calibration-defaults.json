@@ -1,9 +1,8 @@
 {
-  "similarity_threshold": 0.82,
-  "commit_threshold": 0.86,
-  "ambiguity_margin": 0.04,
-  "liveness_threshold": 0.55,
+  "similarity_threshold": 0.58,
+  "commit_threshold": 0.62,
+  "ambiguity_margin": 0.02,
+  "liveness_threshold": 0.28,
   "consensus_frames": 3,
   "consensus_window_seconds": 5
 }
-

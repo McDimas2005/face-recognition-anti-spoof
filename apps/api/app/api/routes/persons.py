@@ -6,7 +6,9 @@ from sqlalchemy.orm import Session
 from app.api.deps import require_roles
 from app.db.session import get_db
 from app.models.domain import Person, UserRole
+from app.schemas.common import MessageResponse
 from app.schemas.person import PersonCreate, PersonResponse, PersonUpdate
+from app.services.admin_cleanup import delete_person_graph
 from app.services.audit import write_audit_log
 
 router = APIRouter()
@@ -38,6 +40,22 @@ def create_person(
     db.commit()
     db.refresh(person)
     return person
+
+
+@router.delete("/{person_id}", response_model=MessageResponse)
+def delete_person(
+    person_id: str,
+    db: Session = Depends(get_db),
+    actor=Depends(require_roles(UserRole.superadmin, UserRole.admin)),
+) -> MessageResponse:
+    person = db.get(Person, person_id)
+    if not person:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Person not found")
+    person_details = {"full_name": person.full_name, "external_id": person.external_id}
+    delete_person_graph(db, person)
+    write_audit_log(db, actor.id, "person", person_id, "person_deleted", person_details)
+    db.commit()
+    return MessageResponse(message="Person deleted")
 
 
 @router.patch("/{person_id}", response_model=PersonResponse)

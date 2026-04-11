@@ -1,12 +1,13 @@
 from fastapi import APIRouter
 
-from app.api.routes import attendance, auth, enrollments, health, persons, recognition, recognition_attempts, review_cases, sessions, settings, users
+from app.api.routes import attendance, auth, enrollments, health, me_enrollment, persons, recognition, recognition_attempts, review_cases, sessions, settings, users
 
 router = APIRouter()
 router.include_router(health.router, tags=["health"])
 router.include_router(auth.router, prefix="/auth", tags=["auth"])
 router.include_router(users.router, prefix="/users", tags=["users"])
 router.include_router(persons.router, prefix="/persons", tags=["persons"])
+router.include_router(me_enrollment.router, prefix="/me", tags=["me"])
 router.include_router(enrollments.router, prefix="/enrollments", tags=["enrollments"])
 router.include_router(sessions.router, prefix="/sessions", tags=["sessions"])
 router.include_router(recognition.router, prefix="/recognition", tags=["recognition"])

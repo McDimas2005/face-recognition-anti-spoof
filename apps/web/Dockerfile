@@ -2,13 +2,13 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-COPY package.json /app/package.json
-COPY apps/web/package.json /app/apps/web/package.json
-COPY packages/shared/package.json /app/packages/shared/package.json
+COPY package*.json ./
+COPY apps/web/package.json ./apps/web/package.json
+COPY packages/shared/package.json ./packages/shared/package.json
 
-COPY apps/web /app/apps/web
-COPY packages/shared /app/packages/shared
 RUN npm install
 
-WORKDIR /app
+COPY apps/web ./apps/web
+COPY packages/shared ./packages/shared
+
 CMD ["sh", "-c", "npm --workspace @face-attendance/web run build && npm --workspace @face-attendance/web run start"]
