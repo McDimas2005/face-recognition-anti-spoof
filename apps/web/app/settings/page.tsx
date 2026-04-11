@@ -48,12 +48,21 @@ export default function SettingsPage() {
   useEffect(() => {
     const session = readSession();
     if (!session) return;
-    apiFetch<SettingsPayload>("/settings", { token: session.accessToken }).then((response) => {
-      setPayload(response);
-      setRecognitionText(JSON.stringify(response.recognition_policy, null, 2));
-      setQualityText(JSON.stringify(response.quality_policy, null, 2));
-      setRetentionText(JSON.stringify(response.retention_policy, null, 2));
-    });
+
+    setError(null);
+    setStatus(null);
+
+    void (async () => {
+      try {
+        const response = await apiFetch<SettingsPayload>("/settings", { token: session.accessToken });
+        setPayload(response);
+        setRecognitionText(JSON.stringify(response.recognition_policy, null, 2));
+        setQualityText(JSON.stringify(response.quality_policy, null, 2));
+        setRetentionText(JSON.stringify(response.retention_policy, null, 2));
+      } catch (loadError) {
+        setError(loadError instanceof Error ? loadError.message : "Failed to load settings");
+      }
+    })();
   }, []);
 
   async function handleSubmit(event: FormEvent) {
