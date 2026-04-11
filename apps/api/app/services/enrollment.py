@@ -60,8 +60,23 @@ def read_upload_to_bgr(upload: UploadFile) -> tuple[bytes, np.ndarray]:
     return content, cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
 
 
+def _resolve_storage_target(path_value: str) -> Path | None:
+    storage_root = Path(settings.storage_path).resolve()
+    target = Path(path_value)
+    if not target.is_absolute():
+        target = storage_root / target
+    try:
+        resolved_target = target.resolve()
+        resolved_target.relative_to(storage_root)
+    except ValueError:
+        return None
+    return resolved_target
+
+
 def persist_image(content: bytes, relative_name: str) -> str:
-    target = Path(settings.storage_path) / relative_name
+    target = _resolve_storage_target(relative_name)
+    if target is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid storage path")
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(content)
     return str(target)
@@ -70,8 +85,8 @@ def persist_image(content: bytes, relative_name: str) -> str:
 def delete_persisted_image(storage_path: str | None) -> None:
     if not storage_path:
         return
-    target = Path(storage_path)
-    if target.exists():
+    target = _resolve_storage_target(storage_path)
+    if target is not None and target.exists():
         target.unlink()
 
 
