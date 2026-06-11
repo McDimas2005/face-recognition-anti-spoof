@@ -199,6 +199,7 @@ def upload_self_enrollment_frame(
             "rejection_reason": sample.rejection_reason,
             "capture_index": sample.capture_index,
             "bypass_quality_validation": batch.bypass_quality_validation,
+            "quality_validation_bypassed": sample.metadata_json.get("quality_validation_bypassed", False),
         },
     )
     db.commit()

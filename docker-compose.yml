@@ -20,7 +20,9 @@ services:
       context: .
       dockerfile: apps/api/Dockerfile
     env_file:
-      - .env
+      - path: .env.example
+      - path: .env
+        required: false
     depends_on:
       db:
         condition: service_healthy
@@ -34,7 +36,9 @@ services:
       context: .
       dockerfile: apps/web/Dockerfile
     env_file:
-      - .env
+      - path: .env.example
+      - path: .env
+        required: false
     depends_on:
       - api
     ports:

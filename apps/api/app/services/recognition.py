@@ -119,10 +119,24 @@ def _quality_thresholds(policy: dict) -> dict:
     }
 
 
+def _image_context(image: np.ndarray) -> dict:
+    return {
+        "source_image": {
+            "width": int(image.shape[1]),
+            "height": int(image.shape[0]),
+        }
+    }
+
+
 def _breakdown_context(policy: dict, quality_policy: dict) -> dict:
     return {
         "recognition_thresholds": _recognition_thresholds(policy),
         "quality_thresholds": _quality_thresholds(quality_policy),
+        "provider": {
+            "detector": detector.name,
+            "liveness": liveness.name,
+            "matching_index": index.name,
+        },
     }
 
 
@@ -224,7 +238,11 @@ def evaluate_frame(
             top_person_id=None,
             top_score=None,
             second_score=None,
-            breakdown={"message": "No face detected", **_breakdown_context(policy, quality_policy)},
+            breakdown={
+                "message": "No face detected",
+                **_image_context(image),
+                **_breakdown_context(policy, quality_policy),
+            },
             snapshot_path=None,
         )
         return {"attempt": attempt}
@@ -244,6 +262,8 @@ def evaluate_frame(
             breakdown={
                 "message": "Multiple faces detected; attendance rejected",
                 "detected_faces": len(detections),
+                "detected_face_boxes": [serialize_face_box(detection, image) for detection in detections],
+                **_image_context(image),
                 **_breakdown_context(policy, quality_policy),
             },
             snapshot_path=None,
@@ -254,6 +274,7 @@ def evaluate_frame(
     face_breakdown = {
         "face_box": serialize_face_box(detections[0], image),
         "detector_confidence": round(float(detections[0].confidence), 4),
+        **_image_context(image),
     }
     quality = assess_quality(image, detections[0], quality_policy)
     quality_score = compute_quality_score(quality, quality_policy)
@@ -365,11 +386,15 @@ def evaluate_frame(
     second_person_name = person_names.get(second["person_id"]) if second else None
     recognition_context = {
         "candidate_scores": candidate_scores,
+        "top_person_id": top["person_id"] if top else None,
         "top_person_name": top_person_name,
+        "top_score": round(float(top_score), 4) if top_score is not None else None,
         "top_score_raw": round(float(top_score), 4) if top_score is not None else None,
         "second_person_id": second["person_id"] if second else None,
         "second_person_name": second_person_name,
+        "second_score": round(float(second_score), 4) if second_score is not None else None,
         "second_score_raw": round(float(second_score), 4) if second_score is not None else None,
+        "margin": round(float(margin), 4) if margin is not None else None,
         "margin_raw": round(float(margin), 4) if margin is not None else None,
         **_breakdown_context(policy, quality_policy),
     }
@@ -388,7 +413,6 @@ def evaluate_frame(
             second_score=second_score,
             breakdown={
                 "message": "Unknown face",
-                "margin": margin,
                 "match_percent": round(top_score * 100, 2) if top_score is not None else None,
                 "top_model_name": top["model_name"] if top else None,
                 **quality,
@@ -422,7 +446,6 @@ def evaluate_frame(
             second_score=second_score,
             breakdown={
                 "message": "Identity margin too small",
-                "margin": margin,
                 "match_percent": round(top_score * 100, 2),
                 "top_model_name": top["model_name"],
                 **quality,
@@ -497,6 +520,8 @@ def evaluate_frame(
             second_score=second_score,
             breakdown={
                 "message": "Duplicate attendance prevented",
+                "matching_frames": len(matching_frames),
+                "average_similarity": average_similarity,
                 "match_percent": round(top_score * 100, 2),
                 "top_model_name": top["model_name"],
                 **quality,

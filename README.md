@@ -535,7 +535,7 @@ For local non-container development:
 
 ### 1. Configure environment variables
 
-Copy the environment template:
+Docker Compose reads `.env.example` for safe development defaults and then reads an optional local `.env` override if it exists. For local customization, copy the environment template:
 
 ```bash
 cp .env.example .env
@@ -767,7 +767,7 @@ It is also a strong example of turning a classroom prototype into a product-styl
 
 ## License / Usage Note
 
-This repository is licensed under the [MIT License](/home/mcdimas/projects/face-recognition-anti-spoof/LICENSE).
+This repository is licensed under the [MIT License](LICENSE).
 
 Important usage note:
 

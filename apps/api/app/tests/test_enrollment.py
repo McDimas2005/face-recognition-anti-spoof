@@ -50,7 +50,7 @@ def enrollment_test_env(monkeypatch):
             for _ in range(pipeline_state["face_count"])
         ]
 
-    def fake_assess_quality(_image, _detection):
+    def fake_assess_quality(_image, _detection, _quality_policy=None):
         return {
             "passed": pipeline_state["quality_passed"],
             "reason": pipeline_state["quality_reason"],
