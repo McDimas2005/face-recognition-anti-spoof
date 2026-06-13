@@ -2,6 +2,35 @@
 
 Production-oriented attendance software built from a classroom face-recognition prototype into a full-stack system with enrollment workflows, browser-based live attendance, review tooling, audit logs, and containerized deployment.
 
+## Live Demo
+
+- Frontend: [https://face-recognition-anti-spoof-web-v2.vercel.app](https://face-recognition-anti-spoof-web-v2.vercel.app)
+- Backend API docs: [https://tsukishimaalan20-face-recognition-anti-spoof-api.hf.space/docs](https://tsukishimaalan20-face-recognition-anti-spoof-api.hf.space/docs)
+
+This is a public portfolio demo of the platform workflow. Demo accounts are intentionally public, and visitors should not upload sensitive biometric data, private face images, or real attendance records.
+
+The deployed backend runs on free Hugging Face Spaces CPU Basic, so cold starts and free-tier quota limits may occur. The current detector, embedder, and liveness provider are demo/development-grade and are not production biometric security.
+
+## Demo Accounts
+
+Public sign-up is intentionally unavailable. Visitors can choose a demo role on the login page, click **Use this account** to fill the email and password, then click **Sign In** manually.
+
+| Role | Email | Password | Purpose |
+| --- | --- | --- | --- |
+| Super Admin | [demo.superadmin@example.com](mailto:demo.superadmin@example.com) | `DemoSuperadmin123!` | Full settings, users, thresholds, audit, and system administration. |
+| Admin | [demo.admin@example.com](mailto:demo.admin@example.com) | `DemoAdmin123!` | Manage people, enrollments, sessions, and attendance operations. |
+| Reviewer | [demo.reviewer@example.com](mailto:demo.reviewer@example.com) | `DemoReviewer123!` | Review unknown, ambiguous, spoof-rejected, and manual follow-up cases. |
+| Viewer | [demo.viewer@example.com](mailto:demo.viewer@example.com) | `DemoViewer123!` | Read-only access for dashboards, logs, and attendance visibility. |
+
+## Quick Demo Walkthrough
+
+1. Open the live frontend.
+2. Choose a demo role on the login page.
+3. Click **Use this account**.
+4. Click **Sign In**.
+5. Explore dashboard, people, enrollments, sessions, logs, review queue, and settings depending on the selected role.
+6. For live attendance, create and enroll a test identity first, and avoid uploading sensitive real biometric data.
+
 ## Overview
 
 Face Attendance Platform is a rebuild of an earlier academic Computer Vision project, originally created as a simple face-recognition attendance prototype. The original version proved the concept. This version reframes the idea as a real software system: structured, multi-user, auditable, web-based, and designed to evolve toward production deployment.
@@ -377,6 +406,7 @@ If you plan to deploy this beyond development, you should treat model onboarding
 
 - **PostgreSQL 16**
   - The primary operational database for users, persons, sessions, embeddings, review cases, and audit logs.
+  - The public portfolio deployment uses Neon PostgreSQL Free as the durable database.
 
 ### AI / inference
 
@@ -391,6 +421,12 @@ If you plan to deploy this beyond development, you should treat model onboarding
 
 - **Docker Compose**
   - Provides a local multi-service stack with API, web app, Postgres, and Caddy.
+- **Vercel**
+  - Hosts only the `apps/web` Next.js frontend for the public portfolio deployment.
+- **Hugging Face Spaces Docker**
+  - Hosts only the FastAPI backend from the root deployment Dockerfile on free CPU Basic.
+- **Neon PostgreSQL**
+  - Stores durable application state for the public demo.
 - **Caddy**
   - Included as a reverse-proxy-friendly frontend for local composition.
 
@@ -417,12 +453,29 @@ At a high level, the application is a full-stack web system with a clear separat
   - Stores users, persons, enrollment batches, embeddings, sessions, recognition attempts, attendance events, settings, and audit logs.
 - **File storage**
   - Uses local disk storage in V1 for optionally retained enrollment or review images.
+  - In the public demo, Hugging Face disk is ephemeral and raw image retention is disabled.
 - **Inference provider layer**
   - Encapsulates the detector, embedder, liveness scorer, and matching strategy.
 - **Review and admin flow**
   - Suspicious or unresolved recognition outcomes are surfaced for manual inspection.
 
 ### Text-based architecture diagram
+
+Public portfolio deployment:
+
+```text
+Browser / Vercel Next.js frontend
+     |
+     | HTTPS API calls
+     v
+Hugging Face Spaces Docker FastAPI backend
+     |
+     | SSL Postgres connection
+     v
+Neon PostgreSQL Free database
+```
+
+Local development stack:
 
 ```text
 +---------------------------+
@@ -624,25 +677,53 @@ make compose-up
 make compose-down
 ```
 
-## Live Demo Login
+## Portfolio Deployment
 
-- Frontend: `https://face-recognition-anti-spoof-web-v2.vercel.app`
-- Backend docs: `https://tsukishimaalan20-face-recognition-anti-spoof-api.hf.space/docs`
+The active public demo is deployed as:
 
-This is a portfolio demo. Demo accounts are public. Do not upload sensitive biometric data.
+- Frontend: Vercel v2 deployment at `https://face-recognition-anti-spoof-web-v2.vercel.app`
+- Backend: Hugging Face Spaces Docker API at `https://tsukishimaalan20-face-recognition-anti-spoof-api.hf.space`
+- API docs: `https://tsukishimaalan20-face-recognition-anti-spoof-api.hf.space/docs`
+- Database: Neon PostgreSQL Free
 
-| Role | Email | Password | Purpose |
-| --- | --- | --- | --- |
-| Super Admin | `demo.superadmin@example.com` | `DemoSuperadmin123!` | Full settings, users, thresholds, audit, and system administration. |
-| Admin | `demo.admin@example.com` | `DemoAdmin123!` | Manage people, enrollments, sessions, and attendance operations. |
-| Reviewer | `demo.reviewer@example.com` | `DemoReviewer123!` | Review unknown, ambiguous, spoof-rejected, and manual follow-up cases. |
-| Viewer | `demo.viewer@example.com` | `DemoViewer123!` | Read-only access for dashboards, logs, and attendance visibility. |
+GitHub is the source of truth. GitHub Actions syncs the backend deployment to the Hugging Face Space, Vercel builds the `apps/web` frontend, and Neon stores durable PostgreSQL data. Free-tier cold starts and quota limits may occur.
+
+Deployment responsibilities:
+
+- Vercel hosts only `apps/web`.
+- Hugging Face hosts only the FastAPI backend from the root deployment Dockerfile.
+- Neon is the durable source of truth for users, people, sessions, embeddings, attempts, review cases, audit logs, and settings.
+- Hugging Face disk is ephemeral and must not be treated as persistent storage.
+- Raw enrollment and review image retention are disabled for the public demo.
+
+Backend / Hugging Face environment:
+
+```env
+API_ENV=production
+API_DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST/DB?sslmode=require
+API_SECRET_KEY=replace-with-long-random-secret
+API_BOOTSTRAP_ADMIN_EMAIL=admin@example.com
+API_BOOTSTRAP_ADMIN_PASSWORD=replace-with-strong-password
+API_CORS_ORIGINS=https://face-recognition-anti-spoof-web-v2.vercel.app,http://localhost:3000
+API_STORAGE_PATH=/tmp/face-attendance
+API_RETAIN_ENROLLMENT_IMAGES=false
+API_RETAIN_REVIEW_IMAGES=false
+API_SEED_DEMO_ACCOUNTS=true
+```
+
+Frontend / Vercel environment:
+
+```env
+NEXT_PUBLIC_API_BASE_URL=https://tsukishimaalan20-face-recognition-anti-spoof-api.hf.space
+```
+
+`API_SEED_DEMO_ACCOUNTS=true` is for public portfolio demo deployments only. Use `false` for private or real deployments. `NEXT_PUBLIC_API_BASE_URL` is public by design because the browser frontend uses it for API calls.
 
 ## First-Run Workflow
 
-After the system starts, a good first-run path is:
+After the system starts locally, a good first-run path is:
 
-1. Open the web app and sign in with the seeded admin credentials.
+1. Open the web app and sign in with the local bootstrap admin or one of the public demo accounts if demo seeding is enabled.
 2. Go to **People** and create a person record.
 3. Go to **Enrollments** and create an enrollment batch for that person.
 4. Upload at least five enrollment images, covering all required diversity tags.
@@ -699,8 +780,12 @@ Key considerations:
 - **Embeddings are sensitive**
   - Even when raw images are not stored, facial embeddings and attendance metadata still deserve careful handling.
 
+- **Demo accounts are public**
+  - The live demo credentials are intentionally visible for portfolio review. They must not protect real users, private records, or sensitive biometric data.
+
 - **Raw image retention should be limited**
   - V1 supports policy-controlled image retention. Enrollment image retention is off by default in the environment template. Review-image retention is configurable.
+  - The public deployment disables raw enrollment and review image retention because Hugging Face free disk is ephemeral.
 
 - **Demo mode is not production readiness**
   - The current shipped detector, embedder, and liveness scorer are demonstration-oriented implementations designed to keep the platform runnable and swappable.
@@ -710,6 +795,7 @@ Key considerations:
 
 - **Consent and compliance matter**
   - Real deployment should include informed consent, retention policy, access controls, legal review, and alignment with institutional or organizational policy.
+  - Do not use the public demo for real attendance operations or sensitive biometric enrollment.
 
 - **Admin actions are auditable**
   - The system separates AI-confirmed attendance from manual overrides and stores audit logs for operational traceability.
@@ -723,6 +809,8 @@ This repository is best described as:
 - **still evolving in model maturity and operational hardening**
 
 The application already includes a real full-stack structure, domain model, admin UX, review flow, audit logging, and containerized deployment. However, the default shipped vision provider is intentionally demo-grade. A real rollout would still require calibrated and appropriately licensed models, stronger validation, and deployment hardening.
+
+The current public portfolio deployment is live on Vercel, Hugging Face Spaces Docker, and Neon PostgreSQL Free. It is useful for exploring the product workflow and role-based UI, but it remains a demo deployment with public credentials and free-tier runtime limits.
 
 ## Limitations
 
@@ -743,7 +831,7 @@ The current implementation is intentionally honest about its boundaries.
 
 - Older databases may temporarily contain mixed embedding families from previous demo providers. The current code handles those safely, but the best operational result still comes from re-enrolling after provider upgrades.
 
-- V1 uses local file storage rather than a cloud object storage adapter.
+- V1 uses local file storage rather than a cloud object storage adapter. In the public demo, raw image retention is disabled because Hugging Face free disk is ephemeral.
 
 - V1 assumes a single-tenant operational shape.
 
