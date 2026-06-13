@@ -11,7 +11,6 @@ on:
       - "deploy/huggingface/**"
       - "apps/api/**"
       - "models/**"
-      - "legacy/DNN/**"
       - "packages/shared/**"
       - "scripts/**"
       - ".env.example"
@@ -94,12 +93,15 @@ jobs:
             cp -R models /tmp/hf-space-sync/models
           fi
 
-          # Copy only the lightweight detector assets folder if present.
-          # Do NOT copy the whole legacy folder because it may contain missing/heavy Git LFS model files.
-          if [ -d "legacy/DNN" ]; then
-            mkdir -p /tmp/hf-space-sync/legacy
-            cp -R legacy/DNN /tmp/hf-space-sync/legacy/DNN
-          fi
+          # Do not copy legacy model assets to Hugging Face.
+          # The Space deployment intentionally excludes heavy / legacy model files.
+          # The backend should fall back to the lightweight demo behavior when DNN assets are absent.
+          mkdir -p /tmp/hf-space-sync/legacy
+          cat > /tmp/hf-space-sync/legacy/README.md <<'EOF'
+          Legacy model assets are intentionally excluded from the free Hugging Face deployment.
+
+          The portfolio deployment uses the backend demo provider and avoids pushing large or license-sensitive historical model files to the Space repository.
+          EOF
 
           if [ -d "packages/shared" ]; then
             mkdir -p /tmp/hf-space-sync/packages
@@ -118,14 +120,17 @@ jobs:
             cp .env.production.example /tmp/hf-space-sync/.env.production.example
           fi
 
-          # Remove any accidental LFS pointer or large legacy model files.
+          # Remove any accidental LFS pointer, large legacy model files, or files rejected by HF Git.
           find /tmp/hf-space-sync -type f \( \
             -name "*.h5" -o \
             -name "*.keras" -o \
             -name "*.pth" -o \
             -name "*.pt" -o \
-            -name "*.onnx" \
+            -name "*.onnx" -o \
+            -name "*.caffemodel" \
           \) -print -delete
+
+          find /tmp/hf-space-sync -type f -size +9M -print -delete
 
           echo "Prepared Hugging Face sync directory:"
           find /tmp/hf-space-sync -maxdepth 4 -type f | sort | sed 's#/tmp/hf-space-sync/##'
