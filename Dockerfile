@@ -24,7 +24,9 @@ COPY apps/api/pyproject.toml /app/pyproject.toml
 COPY apps/api/alembic.ini /app/alembic.ini
 COPY apps/api/alembic /app/alembic
 COPY apps/api/app /app/app
-COPY legacy/DNN /app/legacy/DNN
+# Legacy DNN model assets are intentionally excluded from the free Hugging Face deployment
+# because they are large / historical assets. The demo provider should fall back when absent.
+RUN mkdir -p /app/legacy/DNN
 COPY deploy/huggingface/start-api.sh /app/start-api.sh
 
 RUN pip install --no-cache-dir --upgrade pip \
