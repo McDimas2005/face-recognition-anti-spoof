@@ -1,0 +1,109 @@
+name: Deploy Backend to Hugging Face Space
+
+on:
+  push:
+    branches:
+      - main
+      - deploy/free-cloud
+    paths:
+      - "Dockerfile"
+      - ".dockerignore"
+      - "deploy/huggingface/**"
+      - "apps/api/**"
+      - "models/**"
+      - "legacy/**"
+      - "packages/shared/**"
+      - "scripts/**"
+      - ".env.example"
+      - ".env.production.example"
+      - "docs/**"
+      - ".github/workflows/sync-to-huggingface.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-huggingface-space
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Sync backend deployment to Hugging Face Space
+    runs-on: ubuntu-latest
+
+    env:
+      HF_USERNAME: TsukishimaAlan20
+      HF_SPACE_NAME: face-recognition-anti-spoof-api
+
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate required Hugging Face token
+        run: |
+          if [ -z "${{ secrets.HF_TOKEN }}" ]; then
+            echo "Missing HF_TOKEN GitHub Actions secret."
+            exit 1
+          fi
+
+      - name: Build Hugging Face Space sync directory
+        run: |
+          set -euo pipefail
+
+          rm -rf /tmp/hf-space-sync
+          mkdir -p /tmp/hf-space-sync
+
+          cp Dockerfile /tmp/hf-space-sync/Dockerfile
+
+          if [ -f ".dockerignore" ]; then
+            cp .dockerignore /tmp/hf-space-sync/.dockerignore
+          fi
+
+          cp deploy/huggingface/README.md /tmp/hf-space-sync/README.md
+
+          mkdir -p /tmp/hf-space-sync/deploy
+          cp -R deploy/huggingface /tmp/hf-space-sync/deploy/huggingface
+
+          mkdir -p /tmp/hf-space-sync/apps
+          cp -R apps/api /tmp/hf-space-sync/apps/api
+
+          if [ -d "models" ]; then
+            cp -R models /tmp/hf-space-sync/models
+          fi
+
+          if [ -d "legacy" ]; then
+            cp -R legacy /tmp/hf-space-sync/legacy
+          fi
+
+          if [ -d "packages" ]; then
+            mkdir -p /tmp/hf-space-sync/packages
+            cp -R packages/shared /tmp/hf-space-sync/packages/shared
+          fi
+
+          if [ -d "scripts" ]; then
+            cp -R scripts /tmp/hf-space-sync/scripts
+          fi
+
+          cp .env.example /tmp/hf-space-sync/.env.example
+          cp .env.production.example /tmp/hf-space-sync/.env.production.example
+
+          echo "Prepared Hugging Face sync directory:"
+          find /tmp/hf-space-sync -maxdepth 3 -type f | sort | sed 's#/tmp/hf-space-sync/##'
+
+      - name: Push to Hugging Face Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          cd /tmp/hf-space-sync
+          git init
+          git config user.email "actions@github.com"
+          git config user.name "github-actions"
+
+          git add .
+          git commit -m "Deploy backend from GitHub ${GITHUB_SHA}"
+
+          git branch -M main
+          git remote add hf-space "https://oauth2:${HF_TOKEN}@huggingface.co/spaces/${HF_USERNAME}/${HF_SPACE_NAME}"
+          git push --force hf-space main
