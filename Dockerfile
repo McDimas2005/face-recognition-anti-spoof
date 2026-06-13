@@ -4,6 +4,11 @@ WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ENV API_ENV=production
+ENV API_STORAGE_PATH=/tmp/face-attendance
+ENV API_RETAIN_ENROLLMENT_IMAGES=false
+ENV API_RETAIN_REVIEW_IMAGES=false
+ENV PORT=7860
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -20,7 +25,10 @@ COPY apps/api/alembic.ini /app/alembic.ini
 COPY apps/api/alembic /app/alembic
 COPY apps/api/app /app/app
 COPY legacy/DNN /app/legacy/DNN
+COPY deploy/huggingface/start-api.sh /app/start-api.sh
 
-RUN pip install --no-cache-dir -U pip && pip install --no-cache-dir -e ".[dev]"
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir . \
+    && chmod +x /app/start-api.sh
 
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+CMD ["/app/start-api.sh"]

@@ -391,6 +391,8 @@ If you plan to deploy this beyond development, you should treat model onboarding
 
 - **Docker Compose**
   - Provides a local multi-service stack with API, web app, Postgres, and Caddy.
+- **Free portfolio cloud path**
+  - Recommended deployment is Vercel frontend + Hugging Face Spaces backend + Neon Postgres.
 - **Caddy**
   - Included as a reverse-proxy-friendly frontend for local composition.
 
@@ -561,6 +563,7 @@ Services:
 
 - Frontend: `http://localhost:3000`
 - Backend: `http://localhost:8000`
+- Backend health: `http://localhost:8000/health`
 - FastAPI docs: `http://localhost:8000/docs`
 - Caddy proxy: `http://localhost`
 
@@ -580,6 +583,18 @@ To remove volumes and reset the local database:
 ```bash
 docker compose down -v
 ```
+
+## Free Cloud Deployment
+
+The recommended zero-cost portfolio deployment is:
+
+- Vercel Hobby for the Next.js frontend in `apps/web`
+- Hugging Face Spaces Docker CPU Basic for the FastAPI backend
+- Neon Free PostgreSQL for durable state
+
+Use [docs/DEPLOYMENT_FREE.md](docs/DEPLOYMENT_FREE.md) for the exact setup steps, environment variables, smoke tests, and troubleshooting notes. This path does not require cloud object storage or persistent Hugging Face disk; raw image retention is disabled by default for the free deployment, while embeddings and application records stay in Postgres.
+
+The current detector, embedder, and passive liveness provider remain demo-grade and should not be presented as production biometric security.
 
 ### 3. Optional local development workflow
 

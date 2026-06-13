@@ -6,6 +6,7 @@ from fastapi import Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import router
+from app.api.routes.health import APP_VERSION, health_payload
 from app.core.config import settings
 from app.core.logging import configure_logging
 from app.db.session import create_all, seed_bootstrap_admin
@@ -14,12 +15,13 @@ from app.db.session import create_all, seed_bootstrap_admin
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     configure_logging()
+    settings.validate_production_settings()
     create_all()
     seed_bootstrap_admin()
     yield
 
 
-app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
+app = FastAPI(title=settings.app_name, version=APP_VERSION, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -43,3 +45,8 @@ async def attach_request_id(request: Request, call_next):
 @app.get("/")
 def root() -> dict[str, str]:
     return {"service": settings.app_name, "docs": "/docs"}
+
+
+@app.get("/health")
+def root_health() -> dict[str, str]:
+    return health_payload()

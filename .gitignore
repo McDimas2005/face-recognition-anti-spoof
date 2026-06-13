@@ -1,5 +1,7 @@
 .env
 .env.local
+.env.production
+.env.*.local
 .venv/
 node_modules/
 .next/
@@ -20,4 +22,9 @@ apps/web/.next/
 apps/web/node_modules/
 legacy/__pycache__/
 models/demo-weights/
-
+data/
+uploads/
+review/
+enrollments/
+deploy/tmp/
+deploy/huggingface/build/
