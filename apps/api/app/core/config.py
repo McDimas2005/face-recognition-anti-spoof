@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     bootstrap_admin_email: str = Field(default="admin@example.com", alias="API_BOOTSTRAP_ADMIN_EMAIL")
     bootstrap_admin_password: str = Field(default="ChangeMe123!", alias="API_BOOTSTRAP_ADMIN_PASSWORD")
     bootstrap_admin_name: str = Field(default="System Admin", alias="API_BOOTSTRAP_ADMIN_NAME")
+    seed_demo_accounts: bool = Field(default=False, alias="API_SEED_DEMO_ACCOUNTS")
     cors_origins_raw: str = Field(default="http://localhost:3000", alias="API_CORS_ORIGINS")
     similarity_threshold: float = Field(default=0.58, alias="API_SIMILARITY_THRESHOLD")
     commit_threshold: float = Field(default=0.62, alias="API_COMMIT_THRESHOLD")

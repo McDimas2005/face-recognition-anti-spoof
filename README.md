@@ -624,6 +624,20 @@ make compose-up
 make compose-down
 ```
 
+## Live Demo Login
+
+- Frontend: `https://face-recognition-anti-spoof-web-v2.vercel.app`
+- Backend docs: `https://tsukishimaalan20-face-recognition-anti-spoof-api.hf.space/docs`
+
+This is a portfolio demo. Demo accounts are public. Do not upload sensitive biometric data.
+
+| Role | Email | Password | Purpose |
+| --- | --- | --- | --- |
+| Super Admin | `demo.superadmin@example.com` | `DemoSuperadmin123!` | Full settings, users, thresholds, audit, and system administration. |
+| Admin | `demo.admin@example.com` | `DemoAdmin123!` | Manage people, enrollments, sessions, and attendance operations. |
+| Reviewer | `demo.reviewer@example.com` | `DemoReviewer123!` | Review unknown, ambiguous, spoof-rejected, and manual follow-up cases. |
+| Viewer | `demo.viewer@example.com` | `DemoViewer123!` | Read-only access for dashboards, logs, and attendance visibility. |
+
 ## First-Run Workflow
 
 After the system starts, a good first-run path is:

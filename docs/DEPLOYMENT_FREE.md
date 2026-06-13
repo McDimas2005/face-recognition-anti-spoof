@@ -65,12 +65,15 @@ API_SECRET_KEY=replace-with-long-random-secret
 API_BOOTSTRAP_ADMIN_EMAIL=admin@example.com
 API_BOOTSTRAP_ADMIN_PASSWORD=replace-with-strong-password
 API_BOOTSTRAP_ADMIN_NAME=System Admin
+API_SEED_DEMO_ACCOUNTS=true
 API_CORS_ORIGINS=https://your-vercel-app.vercel.app,http://localhost:3000
 API_STORAGE_PATH=/tmp/face-attendance
 API_RETAIN_ENROLLMENT_IMAGES=false
 API_RETAIN_REVIEW_IMAGES=false
 API_ENV=production
 ```
+
+Use `API_SEED_DEMO_ACCOUNTS=true` for public portfolio demo deployments so visitors can log in without public sign-up. Use `false` for private or real deployments. Demo credentials are intentionally public and must not protect real data.
 
 Generate a local secret with:
 

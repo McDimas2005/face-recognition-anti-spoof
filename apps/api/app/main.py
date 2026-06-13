@@ -9,7 +9,7 @@ from app.api.routes import router
 from app.api.routes.health import APP_VERSION, health_payload
 from app.core.config import settings
 from app.core.logging import configure_logging
-from app.db.session import create_all, seed_bootstrap_admin
+from app.db.session import create_all, seed_bootstrap_admin, seed_demo_accounts
 
 
 @asynccontextmanager
@@ -18,6 +18,7 @@ async def lifespan(_: FastAPI):
     settings.validate_production_settings()
     create_all()
     seed_bootstrap_admin()
+    seed_demo_accounts()
     yield
 
 

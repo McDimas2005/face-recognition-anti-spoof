@@ -28,3 +28,13 @@ review/
 enrollments/
 deploy/tmp/
 deploy/huggingface/build/
+
+# Local Vercel files
+.vercel/
+apps/web/.vercel/
+
+# Local environment files
+.env.development.local
+.env.test.local
+.env.production.local
+apps/web/.env.local
