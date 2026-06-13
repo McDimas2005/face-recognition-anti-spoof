@@ -11,7 +11,7 @@ on:
       - "deploy/huggingface/**"
       - "apps/api/**"
       - "models/**"
-      - "legacy/**"
+      - "legacy/DNN/**"
       - "packages/shared/**"
       - "scripts/**"
       - ".env.example"
@@ -37,9 +37,10 @@ jobs:
       - name: Checkout GitHub repo
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
+          lfs: false
 
-      - name: Validate required Hugging Face token
+      - name: Validate Hugging Face token
         run: |
           if [ -z "${{ secrets.HF_TOKEN }}" ]; then
             echo "Missing HF_TOKEN GitHub Actions secret."
@@ -59,7 +60,29 @@ jobs:
             cp .dockerignore /tmp/hf-space-sync/.dockerignore
           fi
 
-          cp deploy/huggingface/README.md /tmp/hf-space-sync/README.md
+          if [ -f "deploy/huggingface/README.md" ]; then
+            cp deploy/huggingface/README.md /tmp/hf-space-sync/README.md
+          else
+            cat > /tmp/hf-space-sync/README.md <<'EOF'
+          ---
+          title: Face Recognition Anti-Spoof API
+          emoji: 🧑‍💻
+          colorFrom: blue
+          colorTo: gray
+          sdk: docker
+          app_port: 7860
+          pinned: false
+          ---
+
+          # Face Recognition Anti-Spoof API
+
+          FastAPI backend for the Face Attendance Platform portfolio demo.
+
+          This Space runs the backend API only. The frontend is deployed separately on Vercel, and durable data is stored in Neon PostgreSQL.
+
+          Current model/provider note: this deployment uses the demo-grade detector/embedder/liveness provider and is intended for portfolio demonstration, not production biometric security.
+          EOF
+          fi
 
           mkdir -p /tmp/hf-space-sync/deploy
           cp -R deploy/huggingface /tmp/hf-space-sync/deploy/huggingface
@@ -71,11 +94,14 @@ jobs:
             cp -R models /tmp/hf-space-sync/models
           fi
 
-          if [ -d "legacy" ]; then
-            cp -R legacy /tmp/hf-space-sync/legacy
+          # Copy only the lightweight detector assets folder if present.
+          # Do NOT copy the whole legacy folder because it may contain missing/heavy Git LFS model files.
+          if [ -d "legacy/DNN" ]; then
+            mkdir -p /tmp/hf-space-sync/legacy
+            cp -R legacy/DNN /tmp/hf-space-sync/legacy/DNN
           fi
 
-          if [ -d "packages" ]; then
+          if [ -d "packages/shared" ]; then
             mkdir -p /tmp/hf-space-sync/packages
             cp -R packages/shared /tmp/hf-space-sync/packages/shared
           fi
@@ -84,19 +110,34 @@ jobs:
             cp -R scripts /tmp/hf-space-sync/scripts
           fi
 
-          cp .env.example /tmp/hf-space-sync/.env.example
-          cp .env.production.example /tmp/hf-space-sync/.env.production.example
+          if [ -f ".env.example" ]; then
+            cp .env.example /tmp/hf-space-sync/.env.example
+          fi
+
+          if [ -f ".env.production.example" ]; then
+            cp .env.production.example /tmp/hf-space-sync/.env.production.example
+          fi
+
+          # Remove any accidental LFS pointer or large legacy model files.
+          find /tmp/hf-space-sync -type f \( \
+            -name "*.h5" -o \
+            -name "*.keras" -o \
+            -name "*.pth" -o \
+            -name "*.pt" -o \
+            -name "*.onnx" \
+          \) -print -delete
 
           echo "Prepared Hugging Face sync directory:"
-          find /tmp/hf-space-sync -maxdepth 3 -type f | sort | sed 's#/tmp/hf-space-sync/##'
+          find /tmp/hf-space-sync -maxdepth 4 -type f | sort | sed 's#/tmp/hf-space-sync/##'
 
-      - name: Push to Hugging Face Space
+      - name: Push clean deployment folder to Hugging Face Space
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           set -euo pipefail
 
           cd /tmp/hf-space-sync
+
           git init
           git config user.email "actions@github.com"
           git config user.name "github-actions"
